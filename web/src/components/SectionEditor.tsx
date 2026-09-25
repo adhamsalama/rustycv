@@ -2,14 +2,19 @@ import { useState } from 'react'
 import { useCvStore } from '../store'
 import { SECTION_SPECS, type FieldSpec } from '../sections'
 import type { BaseItem, DateSpec, EntryOrder, Section } from '../types'
+import type { RichText } from '../rich'
 import { sectionItems, visibleItems } from '../types'
-import { CheckboxField, DateField, LinesField, TagsField, TextArea, TextField } from './Fields'
+import { CheckboxField, DateField, TagsField, TextArea, TextField } from './Fields'
+import { RichBulletsField, RichTextField } from './RichText'
 import { SortableList, SortableRow } from './Sortable'
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value : '')
 const asStrings = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : [])
 const asDate = (value: unknown): DateSpec | null =>
   value && typeof value === 'object' ? (value as DateSpec) : null
+const asRich = (value: unknown): RichText =>
+  typeof value === 'string' || Array.isArray(value) ? (value as RichText) : ''
+const asRichList = (value: unknown): RichText[] => (Array.isArray(value) ? (value as RichText[]) : [])
 
 function Field({
   spec,
@@ -39,12 +44,20 @@ function Field({
       )
     case 'date':
       return <DateField label={spec.label} value={asDate(item[spec.key])} onChange={set} />
-    case 'lines':
+    case 'rich':
       return (
-        <LinesField
+        <RichTextField
           label={spec.label}
-          value={asStrings(item[spec.key])}
-          rows={spec.rows}
+          value={asRich(item[spec.key])}
+          placeholder={spec.placeholder}
+          onChange={set}
+        />
+      )
+    case 'richBullets':
+      return (
+        <RichBulletsField
+          label={spec.label}
+          value={asRichList(item[spec.key])}
           placeholder={spec.placeholder}
           onChange={set}
         />

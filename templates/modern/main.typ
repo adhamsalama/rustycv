@@ -68,9 +68,9 @@
 #v(0.6em, weak: true)
 #line(length: 100%, stroke: 1.2pt + accent)
 
-#if nonempty(basics.summary) {
+#if rich-nonempty(basics.summary) {
   v(0.8em, weak: true)
-  basics.summary
+  rich(basics.summary)
 }
 
 #render-sections(cv, style)

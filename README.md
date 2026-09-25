@@ -14,7 +14,7 @@ picture of it.
 | --- | --- |
 | **Rendering** | [Typst](https://typst.app), linked as a Rust library and compiled from an in-memory `World` — no subprocess, no temp files, no filesystem access from templates |
 | **Backend** | Rust · axum · SQLite via sqlx |
-| **Frontend** | React · Vite · TypeScript |
+| **Frontend** | React · Vite · TypeScript · TipTap for rich text |
 | **Speed** | ~5 ms for a warm render of a full CV in release (~26 ms in a debug build) — which is what makes the live preview feel instant |
 
 Four built-in templates, including `flowcv` — a faithful reproduction of
@@ -23,6 +23,12 @@ FlowCV's default single-column layout, measured from a real published resume.
 Whole sections **and individual entries** can be hidden rather than deleted, so
 one CV can be tailored per application without losing anything. A section whose
 entries are all hidden leaves no trace — not even its heading.
+
+Description fields — summaries, entry notes, and work-experience highlights —
+support **bold, italic, underline and links**. The formatting is stored as a
+flat list of styled runs rather than HTML or Markdown, so nothing ever parses
+untrusted markup on its way into a PDF; text that carries no marks is still
+stored as a plain string, keeping exports readable.
 
 Work Experience carries two switches of its own, honoured by every template
 because they are document data rather than template decoration: whether an
@@ -174,7 +180,8 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 42 tests
+cargo test --workspace     # 54 tests
+pnpm -C web test           # 23 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check

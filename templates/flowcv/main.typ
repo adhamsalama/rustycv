@@ -128,8 +128,8 @@
   }))
 }
 
-#if nonempty(basics.summary) {
-  block(width: 100%, inset: (bottom: 0.4em), basics.summary)
+#if rich-nonempty(basics.summary) {
+  block(width: 100%, inset: (bottom: 0.4em), rich(basics.summary))
 }
 
 // ------------------------------------------------------------- components
@@ -163,7 +163,7 @@
 
 // A 4px dot at FlowCV's 96dpi reference, i.e. a third of the text size.
 #let fc-bullets(items) = {
-  let items = items.filter(b => nonempty(b))
+  let items = items.filter(b => rich-nonempty(b))
   if items.len() == 0 { return }
   block(inset: (left: 0.8em), width: 100%, above: 0.32em, below: 0.32em, {
     set list(
@@ -172,7 +172,7 @@
       body-indent: 0.42em,
       spacing: 0.36em,
     )
-    list(..items.map(b => [#b]))
+    list(..items.map(b => rich(b)))
   })
 }
 
@@ -223,8 +223,8 @@
         + text(weight: "regular", it.at("institution", default: "")),
       fc-date(it),
     ))
-    if nonempty(it.at("description", default: "")) {
-      block(width: 100%, above: 0.3em, it.description)
+    if rich-nonempty(it.at("description", default: "")) {
+      block(width: 100%, above: 0.3em, rich(it.description))
     }
     v(0.5em, weak: true)
   }
@@ -246,7 +246,7 @@
   for it in items {
     block(width: 100%, below: 6pt, {
       linked(it.at("url", default: ""), text(weight: 700, it.name))
-      if nonempty(it.at("description", default: "")) { [, ] + it.description }
+      if rich-nonempty(it.at("description", default: "")) { [, ] + rich(it.description) }
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))
       if tech.len() > 0 { [ ] + text(style: "italic", tech.join(", ")) }
     })

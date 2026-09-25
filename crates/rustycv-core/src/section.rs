@@ -3,6 +3,7 @@ use uuid::Uuid;
 
 use crate::date::DateSpec;
 use crate::defaults;
+use crate::rich::RichText;
 
 /// One section of a CV: a heading plus a typed list of entries.
 ///
@@ -294,7 +295,7 @@ item! {
         end: Option<DateSpec>,
         /// When true the end date is rendered as "Present" and `end` is ignored.
         current: bool,
-        bullets: Vec<String>,
+        bullets: Vec<RichText>,
     }
 }
 
@@ -307,7 +308,7 @@ item! {
         end: Option<DateSpec>,
         current: bool,
         /// Free text under the entry, e.g. "Overall grade: Very Good with honors."
-        description: String,
+        description: RichText,
     }
 }
 
@@ -323,7 +324,7 @@ item! {
     ProjectItem {
         name: String,
         url: String,
-        description: String,
+        description: RichText,
         /// Rendered as a trailing "Go, Kubernetes, React" line when non-empty.
         tech: Vec<String>,
     }

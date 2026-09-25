@@ -25,6 +25,39 @@
   if a == "" and b == "" { "" } else if a == "" { b } else if b == "" { a } else { a + " – " + b }
 }
 
+// Rich text arrives either as a bare string (unstyled) or as an array of runs.
+// Both are handled here so no template has to know which form it got.
+#let rich(value) = {
+  if value == none { return [] }
+  if type(value) == str { return [#value] }
+  if type(value) != array { return [] }
+
+  let out = []
+  for run in value {
+    let text = run.at("text", default: "")
+    if text == "" { continue }
+    let piece = [#text]
+    // Applied outermost-last so a run that is bold *and* a link renders as both.
+    if run.at("bold", default: false) { piece = strong(piece) }
+    if run.at("italic", default: false) { piece = emph(piece) }
+    if run.at("underline", default: false) { piece = underline(piece) }
+    let url = run.at("link", default: "")
+    if url != "" { piece = link(url, piece) }
+    out += piece
+  }
+  out
+}
+
+// The plain text behind rich text, for emptiness checks.
+#let rich-text(value) = {
+  if value == none { return "" }
+  if type(value) == str { return value }
+  if type(value) != array { return "" }
+  value.map(run => run.at("text", default: "")).join("")
+}
+
+#let rich-nonempty(value) = rich-text(value).trim() != ""
+
 #let nonempty(s) = s != none and str(s).trim() != ""
 
 // Join the parts that are actually present, so a missing company or location
@@ -44,10 +77,10 @@
 )
 
 #let bullets(items, marker: [•], indent: 0pt, gap: 0.45em) = {
-  let items = items.filter(b => nonempty(b))
+  let items = items.filter(b => rich-nonempty(b))
   if items.len() == 0 { return }
   set list(marker: marker, indent: indent, body-indent: 0.45em, spacing: gap)
-  list(..items.map(b => [#b]))
+  list(..items.map(b => rich(b)))
 }
 
 // Group consecutive experience entries that share an employer.
@@ -170,8 +203,8 @@
       (style.title)(join-parts((it.degree, it.institution))),
       (style.meta)(fmt-range(it.start, it.end, current: it.at("current", default: false))),
     ))
-    if nonempty(it.at("description", default: "")) {
-      block(spacing: 0.35em * t, it.description)
+    if rich-nonempty(it.at("description", default: "")) {
+      block(spacing: 0.35em * t, rich(it.description))
     }
   }
 }
@@ -194,7 +227,7 @@
   for it in items {
     block(above: 0.6em * t, below: 0.6em * t, {
       maybe-link(it.at("url", default: ""), (style.title)(it.name))
-      if nonempty(it.at("description", default: "")) { [, ] + it.description }
+      if rich-nonempty(it.at("description", default: "")) { [, ] + rich(it.description) }
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))
       if tech.len() > 0 { [ ] + (style.meta)(tech.join(" · ")) }
     })

@@ -9,10 +9,12 @@
 
 mod date;
 mod defaults;
+mod rich;
 mod section;
 mod theme;
 
 pub use date::DateSpec;
+pub use rich::{RichText, Run};
 pub use section::{
     CertificationItem, EducationItem, EntryOrder, ExperienceItem, InterestItem, LanguageItem,
     ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
@@ -95,7 +97,7 @@ pub struct Basics {
     pub phone: String,
     pub location: String,
     pub links: Vec<Link>,
-    pub summary: String,
+    pub summary: RichText,
 }
 
 /// A labelled external link shown in the contact line.

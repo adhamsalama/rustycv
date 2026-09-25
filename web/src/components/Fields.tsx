@@ -64,39 +64,6 @@ export function CheckboxField({
   )
 }
 
-/**
- * A `string[]` edited one entry per line.
- *
- * Kept as raw text while focused so that a blank line mid-edit doesn't
- * disappear under the cursor.
- */
-export function LinesField({
-  label,
-  value,
-  onChange,
-  rows = 5,
-  placeholder,
-}: {
-  label: string
-  value: string[]
-  onChange: (value: string[]) => void
-  rows?: number
-  placeholder?: string
-}) {
-  return (
-    <label className="field">
-      <span className="field-label">{label}</span>
-      <textarea
-        rows={rows}
-        value={value.join('\n')}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value.split('\n'))}
-        onBlur={(e) => onChange(e.target.value.split('\n').filter((line) => line.trim() !== ''))}
-      />
-    </label>
-  )
-}
-
 /** A `string[]` edited as a comma-separated list. */
 export function TagsField({
   label,

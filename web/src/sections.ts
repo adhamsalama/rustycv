@@ -10,10 +10,12 @@ import type { BaseItem, SectionKind } from './types'
 export type FieldSpec =
   | { key: string; label: string; type: 'text' | 'url' | 'email' | 'tel'; placeholder?: string; width?: 'full' | 'half' }
   | { key: string; label: string; type: 'textarea'; placeholder?: string; rows?: number }
+  /** One rich value, with bold/italic/underline/link. */
+  | { key: string; label: string; type: 'rich'; placeholder?: string }
+  /** A bullet list whose items are rich values. */
+  | { key: string; label: string; type: 'richBullets'; placeholder?: string }
   | { key: string; label: string; type: 'date'; width?: 'half' }
   | { key: string; label: string; type: 'checkbox' }
-  /** A `string[]` edited one entry per line. */
-  | { key: string; label: string; type: 'lines'; placeholder?: string; rows?: number }
   /** A `string[]` edited as a comma-separated list. */
   | { key: string; label: string; type: 'tags'; placeholder?: string }
 
@@ -45,7 +47,12 @@ export const SECTION_SPECS: Record<SectionKind, SectionSpec> = {
       { key: 'start', label: 'Start', type: 'date', width: 'half' },
       { key: 'end', label: 'End', type: 'date', width: 'half' },
       { key: 'current', label: 'I currently work here', type: 'checkbox' },
-      { key: 'bullets', label: 'Highlights', type: 'lines', rows: 6, placeholder: 'One achievement per line' },
+      {
+        key: 'bullets',
+        label: 'Highlights',
+        type: 'richBullets',
+        placeholder: 'One achievement per bullet — ⌘B for bold',
+      },
     ],
     summary: (item) => [str(item, 'role'), str(item, 'company')].filter(Boolean).join(' · ') || 'New role',
   },
@@ -60,7 +67,7 @@ export const SECTION_SPECS: Record<SectionKind, SectionSpec> = {
       { key: 'start', label: 'Start', type: 'date', width: 'half' },
       { key: 'end', label: 'End', type: 'date', width: 'half' },
       { key: 'current', label: 'Currently studying', type: 'checkbox' },
-      { key: 'description', label: 'Notes', type: 'textarea', rows: 2 },
+      { key: 'description', label: 'Notes', type: 'rich' },
     ],
     summary: (item) =>
       [str(item, 'degree'), str(item, 'institution')].filter(Boolean).join(', ') || 'New qualification',
@@ -82,7 +89,7 @@ export const SECTION_SPECS: Record<SectionKind, SectionSpec> = {
     fields: [
       { key: 'name', label: 'Name', type: 'text', width: 'half' },
       { key: 'url', label: 'Link', type: 'url', width: 'half' },
-      { key: 'description', label: 'Description', type: 'textarea', rows: 3 },
+      { key: 'description', label: 'Description', type: 'rich' },
       { key: 'tech', label: 'Tech', type: 'tags', placeholder: 'Go, Kubernetes, React' },
     ],
     summary: (item) => str(item, 'name') || 'New project',
@@ -147,9 +154,12 @@ export function blankItem(kind: SectionKind): BaseItem {
       case 'date':
         item[field.key] = null
         break
-      case 'lines':
       case 'tags':
+      case 'richBullets':
         item[field.key] = []
+        break
+      case 'rich':
+        item[field.key] = ''
         break
       default:
         item[field.key] = ''

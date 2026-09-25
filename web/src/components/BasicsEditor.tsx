@@ -1,5 +1,6 @@
 import { useCvStore } from '../store'
-import { TextArea, TextField } from './Fields'
+import { TextField } from './Fields'
+import { RichTextField } from './RichText'
 
 export function BasicsEditor() {
   const basics = useCvStore((s) => s.document?.basics)
@@ -53,10 +54,9 @@ export function BasicsEditor() {
           />
         </div>
         <div className="full">
-          <TextArea
+          <RichTextField
             label="Summary"
             value={basics.summary}
-            rows={3}
             placeholder="Optional. A short paragraph under your contact details."
             onChange={(summary) => patchBasics({ summary })}
           />

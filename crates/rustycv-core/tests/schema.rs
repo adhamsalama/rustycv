@@ -220,3 +220,85 @@ fn every_serialized_key_is_camel_case() {
         "snake_case keys leaked into the wire format: {bad:?}"
     );
 }
+
+// ------------------------------------------------------------- rich text
+
+use rustycv_core::{RichText, Run};
+
+#[test]
+fn a_bare_string_loads_as_unstyled_rich_text() {
+    // Every document written before rich text existed stores plain strings.
+    let text: RichText = serde_json::from_str(r#""Reduced API latency by 50%.""#).unwrap();
+    assert_eq!(text.plain_text(), "Reduced API latency by 50%.");
+    assert_eq!(text.runs().len(), 1);
+    assert!(text.runs()[0].is_plain());
+}
+
+#[test]
+fn unstyled_text_serializes_back_to_a_bare_string() {
+    // Keeps exports and hand-edited fixtures readable instead of turning every
+    // line into an array of one object.
+    let text = RichText::plain("Hello");
+    assert_eq!(serde_json::to_string(&text).unwrap(), r#""Hello""#);
+    assert_eq!(
+        serde_json::to_string(&RichText::default()).unwrap(),
+        r#""""#
+    );
+}
+
+#[test]
+fn formatted_text_round_trips_as_runs() {
+    let json = r#"[{"text":"Improved accuracy to "},{"text":"98.5%","bold":true}]"#;
+    let text: RichText = serde_json::from_str(json).unwrap();
+
+    assert_eq!(text.plain_text(), "Improved accuracy to 98.5%");
+    assert!(!text.runs()[0].bold);
+    assert!(text.runs()[1].bold);
+
+    // Marks must survive, so this one cannot collapse to a string.
+    let round_tripped: RichText =
+        serde_json::from_str(&serde_json::to_string(&text).unwrap()).unwrap();
+    assert_eq!(round_tripped, text);
+}
+
+#[test]
+fn rich_text_knows_when_it_would_render_nothing() {
+    assert!(RichText::default().is_empty());
+    assert!(RichText::plain("   ").is_empty());
+    assert!(!RichText::plain("x").is_empty());
+    assert!(RichText::from_runs(vec![Run::plain("")]).is_empty());
+}
+
+#[test]
+fn the_fixture_still_loads_with_rich_text_fields() {
+    // The fixture predates the feature and stores plain strings throughout.
+    let doc: CvDocument = serde_json::from_str(FIXTURE).unwrap();
+    assert!(doc.basics.summary.is_empty());
+
+    let json = serde_json::to_string(&doc).unwrap();
+    assert!(
+        json.contains("\"Reduced API latency by 50% by caching CORS preflight responses.\""),
+        "unstyled bullets should still be written as plain strings"
+    );
+    let again: CvDocument = serde_json::from_str(&json).unwrap();
+    assert_eq!(again, doc);
+}
+
+#[test]
+fn a_bullet_can_carry_marks() {
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Work","kind":"experience","items":[{"role":"Dev","bullets":[
+             [{"text":"Improved accuracy to "},{"text":"98.5%","bold":true,"italic":true}]
+           ]}]}]}"#,
+    )
+    .unwrap();
+
+    match &doc.sections[0].body {
+        rustycv_core::SectionBody::Experience { items, .. } => {
+            let bullet = &items[0].bullets[0];
+            assert_eq!(bullet.plain_text(), "Improved accuracy to 98.5%");
+            assert!(bullet.runs()[1].bold && bullet.runs()[1].italic);
+        }
+        other => panic!("expected experience, got {other:?}"),
+    }
+}

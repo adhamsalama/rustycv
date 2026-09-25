@@ -493,3 +493,135 @@ fn every_template_honours_the_experience_switches() {
         );
     }
 }
+
+// ----------------------------------------------------------- rich text
+
+/// Replace the first Bosta bullet with the given rich-text JSON.
+fn fixture_with_first_bullet(bullet: serde_json::Value) -> CvDocument {
+    let mut doc: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    for section in doc["sections"].as_array_mut().unwrap() {
+        if section["kind"] == "experience" {
+            section["items"][0]["bullets"] = json!([bullet]);
+        }
+    }
+    serde_json::from_value(doc).unwrap()
+}
+
+#[test]
+fn marks_change_what_is_drawn() {
+    // Same characters, different weight — so any difference in the rendered
+    // pixels can only come from the marks being applied.
+    let plain = fixture_with_first_bullet(json!([{ "text": "Improved accuracy to 98.5%" }]));
+    let bold = fixture_with_first_bullet(json!([
+        { "text": "Improved accuracy to " },
+        { "text": "98.5%", "bold": true }
+    ]));
+
+    assert_ne!(
+        render_pngs(&plain, 150.0).unwrap(),
+        render_pngs(&bold, 150.0).unwrap(),
+        "a bold run should render differently from the same text unstyled"
+    );
+}
+
+/// A short digest, so a failed comparison prints something readable instead of
+/// a megabyte of PNG.
+fn digest(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[test]
+fn each_visible_mark_renders_distinctly() {
+    // Guards against a mark being parsed but silently dropped. `link` is not
+    // here on purpose: the fixture's accent is black, so a link is visually
+    // identical to plain text and is checked through the PDF instead.
+    let text = "Improved accuracy";
+    let mut seen: Vec<(&str, u64)> = Vec::new();
+
+    for mark in ["plain", "bold", "italic", "underline"] {
+        let mut run = json!({ "text": text });
+        if mark != "plain" {
+            run[mark] = json!(true);
+        }
+        let page = render_pngs(&fixture_with_first_bullet(json!([run])), 150.0).unwrap();
+        let hash = digest(&page.concat());
+
+        for (other, previous) in &seen {
+            assert_ne!(
+                hash, *previous,
+                "`{mark}` renders identically to `{other}` — the mark is being dropped"
+            );
+        }
+        seen.push((mark, hash));
+    }
+}
+
+#[test]
+fn a_link_run_reaches_the_pdf() {
+    // A link is an annotation rather than a pixel change — with a black accent
+    // it looks exactly like plain text — so this has to inspect the PDF.
+    let plain = render_pdf(&fixture_with_first_bullet(json!([{ "text": "Docs" }]))).unwrap();
+    let linked = render_pdf(&fixture_with_first_bullet(
+        json!([{ "text": "Docs", "link": "https://example.com/handbook" }]),
+    ))
+    .unwrap();
+
+    assert_ne!(
+        digest(&plain),
+        digest(&linked),
+        "a link run should add an annotation to the PDF"
+    );
+    assert!(
+        linked.len() > plain.len(),
+        "the annotation and its URI should make the PDF larger"
+    );
+}
+
+#[test]
+fn a_bare_string_bullet_renders_the_same_as_one_unstyled_run() {
+    // The compact wire form and the explicit one must be indistinguishable,
+    // otherwise saving a document would shift the layout of existing CVs.
+    let compact = fixture_with_first_bullet(json!("Improved accuracy to 98.5%"));
+    let explicit = fixture_with_first_bullet(json!([{ "text": "Improved accuracy to 98.5%" }]));
+
+    assert_eq!(
+        render_pdf(&compact).unwrap(),
+        render_pdf(&explicit).unwrap(),
+        "the two wire forms of the same text must render identically"
+    );
+}
+
+#[test]
+fn rich_text_is_never_interpreted_as_typst_markup() {
+    // Run text reaches Typst as a string, which is inserted literally. If it
+    // were ever spliced into markup instead, this would emit a heading, a bold
+    // span and a broken function call rather than the characters typed.
+    let hostile = "= not a heading *not bold* #panic() $x^2$";
+    let doc = fixture_with_first_bullet(json!([{ "text": hostile }]));
+
+    let pdf = render_pdf(&doc).expect("hostile text must not break the render");
+    assert!(pdf.starts_with(b"%PDF"));
+
+    // It must also look like the same literal characters however it was stored.
+    assert_eq!(
+        render_pdf(&doc).unwrap(),
+        render_pdf(&fixture_with_first_bullet(json!(hostile))).unwrap(),
+    );
+}
+
+#[test]
+fn every_template_renders_marks() {
+    for template in TEMPLATES {
+        let mut doc = fixture_with_first_bullet(json!([
+            { "text": "Improved accuracy to " },
+            { "text": "98.5%", "bold": true, "italic": true },
+            { "text": " overall", "underline": true }
+        ]));
+        doc.template = template.id.to_string();
+        let pdf = render_pdf(&doc).unwrap_or_else(|e| panic!("{}: {e:#?}", template.id));
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+}

@@ -1,5 +1,8 @@
 // Mirrors `rustycv-core`. Keep in sync with crates/rustycv-core/src.
 
+import type { RichText } from './rich'
+export type { RichText, Run } from './rich'
+
 export type SectionKind =
   | 'experience'
   | 'education'
@@ -42,7 +45,7 @@ export interface Basics {
   phone: string
   location: string
   links: Link[]
-  summary: string
+  summary: RichText
 }
 
 /** Every item shares an id and a visibility flag; the rest varies by kind. */

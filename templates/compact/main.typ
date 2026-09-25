@@ -71,9 +71,9 @@
   text(size: base-size * 0.92, bits.join(text(fill: muted)[ #sym.dot.c ]))
 }
 
-#if nonempty(basics.summary) {
+#if rich-nonempty(basics.summary) {
   v(0.4em, weak: true)
-  basics.summary
+  rich(basics.summary)
 }
 
 #render-sections(cv, style)
