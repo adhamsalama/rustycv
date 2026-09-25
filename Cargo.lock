@@ -2539,6 +2539,7 @@ name = "rustycv-render"
 version = "0.1.0"
 dependencies = [
  "comemo 0.4.0",
+ "image",
  "rustycv-core",
  "serde",
  "serde_json",

@@ -19,3 +19,5 @@ comemo = "0.4"
 
 [dev-dependencies]
 uuid = { workspace = true }
+# Decodes rendered pages so tests can assert on what actually got drawn.
+image = { version = "0.25", default-features = false, features = ["png"] }

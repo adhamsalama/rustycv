@@ -176,7 +176,9 @@
   })
 }
 
-// Roles under a shared employer sit behind a hairline, indented from it.
+// Roles under a shared employer sit behind a single hairline that runs the
+// whole group. Wrapping each role separately instead would break the line into
+// segments with a gap at every role boundary.
 #let fc-indented(body) = block(
   width: 100%,
   inset: (left: 0.8em),
@@ -193,13 +195,15 @@
     if grouped {
       // A run of roles at one employer: the company is named once, above.
       block(width: 100%, below: 0.25em, text(weight: 700, group.company))
-      for it in group.items {
-        fc-indented({
+      fc-indented({
+        for (i, it) in group.items.enumerate() {
+          // Space between roles goes inside the rule, so the line stays unbroken.
+          if i > 0 { v(0.5em, weak: false) }
           fc-row(text(weight: 700, it.role), fc-date(it))
           fc-bullets(it.at("bullets", default: ()))
-        })
-        v(0.5em, weak: true)
-      }
+        }
+      })
+      v(0.5em, weak: true)
     } else {
       // A one-off role reads inline as "Backend Engineer, Wuilt" with the
       // company in regular weight — no employer heading, no rule.

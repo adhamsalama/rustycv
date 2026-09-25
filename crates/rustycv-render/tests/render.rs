@@ -360,3 +360,65 @@ fn resetting_spacing_restores_the_reference_layout() {
         "reset should reproduce the reference byte for byte"
     );
 }
+
+/// The longest vertical runs of dark pixels in the darkest left-hand column.
+///
+/// The employer hairline is the only thing drawn in its column — role text sits
+/// an indent to its right — so this isolates the rule and reports how many
+/// separate segments it was drawn in.
+fn hairline_segments(png: &[u8], min_run: u32) -> Vec<u32> {
+    let img = image::load_from_memory(png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+
+    // The rule is #cccccc (luma 204) and antialiasing lifts it further, so the
+    // threshold has to sit above it rather than at a "looks like ink" level.
+    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 235;
+    let mut best = (0u32, 0u32); // (column, longest run)
+    for x in 0..width / 3 {
+        let (mut run, mut longest) = (0u32, 0u32);
+        for y in 0..height {
+            run = if dark(x, y) { run + 1 } else { 0 };
+            longest = longest.max(run);
+        }
+        if longest > best.1 {
+            best = (x, longest);
+        }
+    }
+
+    let mut segments = Vec::new();
+    let mut run = 0u32;
+    for y in 0..height {
+        if dark(best.0, y) {
+            run += 1;
+        } else {
+            if run >= min_run {
+                segments.push(run);
+            }
+            run = 0;
+        }
+    }
+    if run >= min_run {
+        segments.push(run);
+    }
+    segments
+}
+
+#[test]
+fn the_employer_hairline_is_one_unbroken_line() {
+    // FlowCV draws a single rule down a whole run of roles at one employer.
+    // Wrapping each role in its own bordered block instead looks almost right
+    // but leaves a visible gap at every role boundary, which is easy to
+    // reintroduce and impossible to notice in a diff.
+    // Rendered larger than the default so a 1pt rule lands on whole pixels.
+    let doc: CvDocument = serde_json::from_str(FIXTURE).unwrap();
+    let page = render_pngs(&doc, 200.0).unwrap().remove(0);
+    let segments = hairline_segments(&page, 40);
+
+    assert_eq!(
+        segments.len(),
+        1,
+        "the hairline should be drawn as one segment, got {segments:?}"
+    );
+}
