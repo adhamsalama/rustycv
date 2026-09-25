@@ -73,13 +73,22 @@ export interface SkillGroup extends BaseItem {
  * A section is flat on the wire: common fields plus a `kind` tag and the
  * entries, which live under `items` for every kind except skills (`groups`).
  */
+/** Which of role and company leads a work-experience entry. */
+export type EntryOrder = 'roleFirst' | 'companyFirst'
+
 export type Section = {
   id: string
   title: string
   visible: boolean
 } & (
   | { kind: 'skills'; groups: SkillGroup[] }
-  | { kind: Exclude<SectionKind, 'skills'>; items: BaseItem[] }
+  | {
+      kind: 'experience'
+      items: BaseItem[]
+      order: EntryOrder
+      groupPromotions: boolean
+    }
+  | { kind: Exclude<SectionKind, 'skills' | 'experience'>; items: BaseItem[] }
 )
 
 export interface CvDocument {

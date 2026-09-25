@@ -14,8 +14,8 @@ mod theme;
 
 pub use date::DateSpec;
 pub use section::{
-    CertificationItem, EducationItem, ExperienceItem, InterestItem, LanguageItem, ProjectItem,
-    ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
+    CertificationItem, EducationItem, EntryOrder, ExperienceItem, InterestItem, LanguageItem,
+    ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
 };
 pub use theme::{HeadingStyle, PageSize, Theme};
 

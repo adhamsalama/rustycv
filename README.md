@@ -24,6 +24,12 @@ Whole sections **and individual entries** can be hidden rather than deleted, so
 one CV can be tailored per application without losing anything. A section whose
 entries are all hidden leaves no trace — not even its heading.
 
+Work Experience carries two switches of its own, honoured by every template
+because they are document data rather than template decoration: whether an
+entry reads *Job title – Employer* or *Employer – Job title*, and whether
+consecutive roles at one employer are grouped under a single heading
+("group promotions").
+
 ---
 
 ## Prerequisites
@@ -168,7 +174,7 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 35 tests
+cargo test --workspace     # 42 tests
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check

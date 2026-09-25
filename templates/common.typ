@@ -56,7 +56,13 @@
 // one-off role as "Backend Engineer, Wuilt". Detecting runs here — rather than
 // grouping by company globally — preserves the user's ordering, so a return to a
 // former employer still reads chronologically instead of being folded together.
-#let group-by-company(items) = {
+//
+// With `enabled: false` every entry stands alone, which is what the section's
+// "group promotions" switch turns off.
+#let group-by-company(items, enabled: true) = {
+  if not enabled {
+    return items.map(it => (company: it.at("company", default: ""), items: (it,)))
+  }
   let groups = ()
   for it in items {
     let company = it.at("company", default: "")
@@ -67,6 +73,28 @@
     }
   }
   groups
+}
+
+// The work-experience switches, with the defaults a document may omit.
+#let experience-options(section) = (
+  order: section.at("order", default: "roleFirst"),
+  group-promotions: section.at("groupPromotions", default: true),
+)
+
+// One entry on a single line: whichever of role and company leads is bold, and
+// the company keeps its link wherever it lands.
+#let entry-line(it, order, link-company) = {
+  let role = it.at("role", default: "")
+  let company = it.at("company", default: "")
+  let url = it.at("companyUrl", default: "")
+  if not nonempty(company) { return text(weight: 700, role) }
+  if not nonempty(role) { return link-company(url, text(weight: 700, company)) }
+
+  if order == "companyFirst" {
+    link-company(url, text(weight: 700, company)) + text(weight: 700, ", ") + text(weight: "regular", role)
+  } else {
+    text(weight: 700, role + ", ") + link-company(url, text(weight: "regular", company))
+  }
 }
 
 // Section dispatch: look up a section's entries whatever the key is called,
@@ -98,9 +126,9 @@
 //   tight            multiplier on the vertical rhythm between entries
 // ---------------------------------------------------------------------------
 
-#let experience-section(items, style) = {
+#let experience-section(items, style, options: (order: "roleFirst", group-promotions: true)) = {
   let t = style.tight
-  for group in group-by-company(items) {
+  for group in group-by-company(items, enabled: options.group-promotions) {
     // A run of roles at one employer gets a single company heading; a lone role
     // reads better inline as "Backend Engineer, Wuilt".
     let grouped = group.items.len() > 1
@@ -114,10 +142,7 @@
       let heading = if grouped {
         (style.title)(it.role)
       } else {
-        (style.title)(maybe-link(
-          it.at("companyUrl", default: ""),
-          join-parts((it.role, it.company)),
-        ))
+        (style.title)(entry-line(it, options.order, maybe-link))
       }
       block(
         // Roles after the first in a group need a clear break from the previous
@@ -223,7 +248,9 @@
 
     (style.heading)(section.title)
 
-    if section.kind == "experience" { experience-section(items, style) }
+    if section.kind == "experience" {
+      experience-section(items, style, options: experience-options(section))
+    }
     else if section.kind == "education" { education-section(items, style) }
     else if section.kind == "skills" { skills-section(items, style) }
     else if section.kind == "projects" { projects-section(items, style) }

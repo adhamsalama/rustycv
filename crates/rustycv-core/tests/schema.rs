@@ -162,3 +162,61 @@ fn hiding_an_entry_survives_a_round_trip() {
         before
     );
 }
+
+#[test]
+fn experience_switches_default_to_the_reference_behaviour() {
+    // A document that predates the switches must render exactly as it used to:
+    // role first, promotions grouped.
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Work","kind":"experience","items":[{"role":"Dev"}]}]}"#,
+    )
+    .unwrap();
+
+    match &doc.sections[0].body {
+        rustycv_core::SectionBody::Experience {
+            order,
+            group_promotions,
+            ..
+        } => {
+            assert_eq!(*order, rustycv_core::EntryOrder::RoleFirst);
+            assert!(*group_promotions);
+        }
+        other => panic!("expected an experience section, got {other:?}"),
+    }
+}
+
+#[test]
+fn every_serialized_key_is_camel_case() {
+    // `#[serde(rename_all)]` on an enum renames its *variants*, not the fields
+    // inside them — so `group_promotions` shipped as snake_case while the
+    // templates looked for `groupPromotions`, and the switch silently did
+    // nothing. Assert the whole document rather than that one field.
+    let doc: CvDocument = serde_json::from_str(FIXTURE).unwrap();
+    let value = serde_json::to_value(&doc).unwrap();
+
+    fn walk(value: &serde_json::Value, path: &str, bad: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, child) in map {
+                    if key.contains('_') {
+                        bad.push(format!("{path}.{key}"));
+                    }
+                    walk(child, &format!("{path}.{key}"), bad);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for (i, child) in items.iter().enumerate() {
+                    walk(child, &format!("{path}[{i}]"), bad);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut bad = Vec::new();
+    walk(&value, "", &mut bad);
+    assert!(
+        bad.is_empty(),
+        "snake_case keys leaked into the wire format: {bad:?}"
+    );
+}

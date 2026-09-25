@@ -63,11 +63,24 @@ impl Section {
 
 /// The entries of a section, tagged by `kind`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+// `rename_all` on an enum renames the *variants*; the fields inside them need
+// `rename_all_fields`, or `group_promotions` ships as snake_case while every
+// other key in the document is camelCase.
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum SectionBody {
     Experience {
         #[serde(default)]
         items: Vec<ExperienceItem>,
+        /// Which of role and company leads the entry line.
+        #[serde(default)]
+        order: EntryOrder,
+        /// Fold a run of roles at the same employer under one company heading.
+        #[serde(default = "defaults::r#true")]
+        group_promotions: bool,
     },
     Education {
         #[serde(default)]
@@ -115,7 +128,7 @@ impl SectionBody {
 
     pub fn len(&self) -> usize {
         match self {
-            Self::Experience { items } => items.len(),
+            Self::Experience { items, .. } => items.len(),
             Self::Education { items } => items.len(),
             Self::Skills { groups } => groups.len(),
             Self::Projects { items } => items.len(),
@@ -137,7 +150,7 @@ impl SectionBody {
             };
         }
         match self {
-            Self::Experience { items } => count!(items),
+            Self::Experience { items, .. } => count!(items),
             Self::Education { items } => count!(items),
             Self::Skills { groups } => count!(groups),
             Self::Projects { items } => count!(items),
@@ -157,7 +170,7 @@ impl SectionBody {
             };
         }
         match self {
-            Self::Experience { items } => refresh!(items),
+            Self::Experience { items, .. } => refresh!(items),
             Self::Education { items } => refresh!(items),
             Self::Skills { groups } => refresh!(groups),
             Self::Projects { items } => refresh!(items),
@@ -167,6 +180,20 @@ impl SectionBody {
             Self::References { items } => refresh!(items),
         }
     }
+}
+
+/// Which of role and company leads a work-experience entry.
+///
+/// Only affects entries rendered on their own line — when a run of roles is
+/// grouped under one employer, the employer is the heading either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum EntryOrder {
+    /// "Backend Engineer, Wuilt"
+    #[default]
+    RoleFirst,
+    /// "Wuilt, Backend Engineer"
+    CompanyFirst,
 }
 
 /// The set of section types the app knows how to edit and render.
@@ -210,7 +237,11 @@ impl SectionKind {
 
     fn empty_body(self) -> SectionBody {
         match self {
-            Self::Experience => SectionBody::Experience { items: vec![] },
+            Self::Experience => SectionBody::Experience {
+                items: vec![],
+                order: EntryOrder::default(),
+                group_promotions: true,
+            },
             Self::Education => SectionBody::Education { items: vec![] },
             Self::Skills => SectionBody::Skills { groups: vec![] },
             Self::Projects => SectionBody::Projects { items: vec![] },

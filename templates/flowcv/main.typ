@@ -189,8 +189,8 @@
 
 // ---------------------------------------------------------------- sections
 
-#let fc-experience(items) = {
-  for group in group-by-company(items) {
+#let fc-experience(items, options) = {
+  for group in group-by-company(items, enabled: options.group-promotions) {
     let grouped = group.items.len() > 1
     if grouped {
       // A run of roles at one employer: the company is named once, above.
@@ -205,17 +205,10 @@
       })
       v(0.5em, weak: true)
     } else {
-      // A one-off role reads inline as "Backend Engineer, Wuilt" with the
-      // company in regular weight — no employer heading, no rule.
+      // A one-off role reads inline as "Backend Engineer, Wuilt" — leading part
+      // bold, trailing part regular — with no employer heading and no rule.
       let it = group.items.first()
-      let heading = if nonempty(it.at("company", default: "")) {
-        text(weight: 700, it.role + ", ") + linked(
-          it.at("companyUrl", default: ""),
-          text(weight: "regular", it.company),
-        )
-      } else {
-        text(weight: 700, it.role)
-      }
+      let heading = entry-line(it, options.order, (url, body) => linked(url, body))
       block(width: 100%, below: 0.1em, fc-row(heading, fc-date(it)))
       fc-bullets(it.at("bullets", default: ()))
       v(0.5em, weak: true)
@@ -297,7 +290,7 @@
 
   fc-heading(section.title, section.kind)
 
-  if section.kind == "experience" { fc-experience(items) }
+  if section.kind == "experience" { fc-experience(items, experience-options(section)) }
   else if section.kind == "education" { fc-education(items) }
   else if section.kind == "skills" { fc-skills(items) }
   else if section.kind == "projects" { fc-projects(items) }

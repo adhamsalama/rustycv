@@ -422,3 +422,74 @@ fn the_employer_hairline_is_one_unbroken_line() {
         "the hairline should be drawn as one segment, got {segments:?}"
     );
 }
+
+/// Apply the work-experience switches to the fixture.
+fn with_experience_options(order: &str, group: bool) -> CvDocument {
+    let mut doc: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    for section in doc["sections"].as_array_mut().unwrap() {
+        if section["kind"] == "experience" {
+            section["order"] = json!(order);
+            section["groupPromotions"] = json!(group);
+        }
+    }
+    serde_json::from_value(doc).unwrap()
+}
+
+#[test]
+fn the_defaults_match_the_reference_resume() {
+    // Role-first with promotions grouped is what the reference was measured
+    // from, so an omitted switch must land there or existing CVs would shift.
+    let explicit = render_pdf(&with_experience_options("roleFirst", true)).unwrap();
+    assert_eq!(
+        explicit,
+        render_pdf(&fixture()).unwrap(),
+        "the fixture omits both switches and must render as if they were default"
+    );
+}
+
+#[test]
+fn entry_order_swaps_role_and_company() {
+    let role_first = render_pdf(&with_experience_options("roleFirst", true)).unwrap();
+    let company_first = render_pdf(&with_experience_options("companyFirst", true)).unwrap();
+    assert_ne!(
+        role_first, company_first,
+        "switching the title/subtitle order should change the output"
+    );
+}
+
+#[test]
+fn turning_off_group_promotions_removes_the_employer_hairline() {
+    // Ungrouped, every role stands alone as "Role, Company" — so the rule that
+    // brackets a run of roles at one employer should not be drawn at all.
+    let doc = with_experience_options("roleFirst", false);
+    let page = render_pngs(&doc, 200.0).unwrap().remove(0);
+    assert!(
+        hairline_segments(&page, 40).is_empty(),
+        "no roles are grouped, so there should be no hairline"
+    );
+
+    let grouped = render_pngs(&with_experience_options("roleFirst", true), 200.0)
+        .unwrap()
+        .remove(0);
+    assert_eq!(hairline_segments(&grouped, 40).len(), 1);
+}
+
+#[test]
+fn every_template_honours_the_experience_switches() {
+    // The switches are document data, not flowcv decoration, so every template
+    // has to respect them.
+    for template in TEMPLATES {
+        let mut a = with_experience_options("roleFirst", true);
+        let mut b = with_experience_options("companyFirst", false);
+        a.template = template.id.to_string();
+        b.template = template.id.to_string();
+
+        let rendered_a = render_pdf(&a).unwrap_or_else(|e| panic!("{}: {e:#?}", template.id));
+        let rendered_b = render_pdf(&b).unwrap_or_else(|e| panic!("{}: {e:#?}", template.id));
+        assert_ne!(
+            rendered_a, rendered_b,
+            "template `{}` ignores the work-experience switches",
+            template.id
+        );
+    }
+}

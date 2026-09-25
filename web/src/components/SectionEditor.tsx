@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useCvStore } from '../store'
 import { SECTION_SPECS, type FieldSpec } from '../sections'
-import type { BaseItem, DateSpec, Section } from '../types'
+import type { BaseItem, DateSpec, EntryOrder, Section } from '../types'
 import { sectionItems, visibleItems } from '../types'
 import { CheckboxField, DateField, LinesField, TagsField, TextArea, TextField } from './Fields'
 import { SortableList, SortableRow } from './Sortable'
@@ -69,6 +69,47 @@ function Field({
         />
       )
   }
+}
+
+/**
+ * Switches that belong to a section rather than to any one entry.
+ *
+ * Only work experience has any today, so this renders nothing elsewhere rather
+ * than inventing a general mechanism for a single case.
+ */
+function SectionOptions({ section }: { section: Section }) {
+  const patch = useCvStore((s) => s.patchSectionOptions)
+  if (section.kind !== 'experience') return null
+
+  return (
+    <div className="section-options">
+      <label className="field">
+        <span className="field-label">Title / subtitle order</span>
+        <select
+          value={section.order}
+          onChange={(e) => patch(section.id, { order: e.target.value as EntryOrder })}
+        >
+          <option value="roleFirst">Job title – Employer</option>
+          <option value="companyFirst">Employer – Job title</option>
+        </select>
+      </label>
+
+      <label className="field field-checkbox">
+        <input
+          type="checkbox"
+          checked={section.groupPromotions}
+          onChange={(e) => patch(section.id, { groupPromotions: e.target.checked })}
+        />
+        <span>
+          Group promotions
+          <span className="muted small">
+            {' '}
+            — consecutive roles at one employer share a heading
+          </span>
+        </span>
+      </label>
+    </div>
+  )
 }
 
 function ItemCard({
@@ -179,6 +220,8 @@ export function SectionEditor({ section }: { section: Section }) {
       {!section.visible ? (
         <p className="muted">This section is hidden and will not appear in the PDF.</p>
       ) : null}
+
+      <SectionOptions section={section} />
 
       <SortableList
         ids={items.map((i) => i.id)}

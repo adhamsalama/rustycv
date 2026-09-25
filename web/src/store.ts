@@ -33,6 +33,7 @@ interface CvStore {
   addSection: (kind: SectionKind) => void
   removeSection: (sectionId: string) => void
   renameSection: (sectionId: string, title: string) => void
+  patchSectionOptions: (sectionId: string, patch: Record<string, unknown>) => void
   toggleSection: (sectionId: string) => void
   moveSection: (from: number, to: number) => void
 
@@ -118,7 +119,11 @@ export const useCvStore = create<CvStore>()(
             id: crypto.randomUUID(),
             title: defaultTitle(kind),
             visible: true,
-            ...(kind === 'skills' ? { kind, groups: [] } : { kind, items: [] }),
+            ...(kind === 'skills'
+              ? { kind, groups: [] }
+              : kind === 'experience'
+                ? { kind, items: [], order: 'roleFirst', groupPromotions: true }
+                : { kind, items: [] }),
           } as Section
           document.sections.push(section)
         }),
@@ -127,6 +132,10 @@ export const useCvStore = create<CvStore>()(
           document.sections = document.sections.filter((s) => s.id !== sectionId)
         }),
       renameSection: (sectionId, title) => withSection(sectionId, (s) => void (s.title = title)),
+      // Per-section switches (currently work experience's order and grouping)
+      // live alongside the entries, so they patch the section itself.
+      patchSectionOptions: (sectionId, patch) =>
+        withSection(sectionId, (section) => void Object.assign(section, patch)),
       toggleSection: (sectionId) => withSection(sectionId, (s) => void (s.visible = !s.visible)),
       moveSection: (from, to) => edit((document) => move(document.sections, from, to)),
 
