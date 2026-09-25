@@ -16,6 +16,12 @@
 
 #let accent = rgb(theme.accent)
 #let base = theme.fontSizePt * 1pt
+// One rhythm for the whole document: wrapped lines and separate bullets sit the
+// same distance apart, which is what FlowCV's uniform line-height gives. Tying
+// them together is also what makes the line-height control behave — scaling the
+// leading alone would spread a bullet's own lines while leaving the gap to the
+// next bullet fixed.
+#let leading = theme.lineHeight * 0.5em
 #let rule-grey = rgb("#cccccc")
 
 // FlowCV tints the heading band with 7% black regardless of accent. Deriving it
@@ -40,7 +46,7 @@
 
 #set text(font: theme.fontFamily, size: base, lang: "en", fallback: true, fill: black)
 // FlowCV: 15px line box on a 9pt (12px) font — a 1.25 ratio.
-#set par(leading: theme.lineHeight * 0.5em, justify: false, spacing: theme.lineHeight * 0.5em)
+#set par(leading: leading, justify: false, spacing: leading)
 #show link: set text(fill: black)
 
 // ---------------------------------------------------------------- icons
@@ -170,7 +176,7 @@
       marker: box(baseline: -0.24em, circle(radius: base * 0.16, fill: black)),
       indent: 0pt,
       body-indent: 0.42em,
-      spacing: 0.36em,
+      spacing: leading,
     )
     list(..items.map(b => rich(b)))
   })

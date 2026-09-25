@@ -625,3 +625,117 @@ fn every_template_renders_marks() {
         assert!(pdf.starts_with(b"%PDF"));
     }
 }
+
+// ------------------------------------------------- line height / rhythm
+
+/// Distance from the first inked row to the last, i.e. how much vertical space
+/// the content actually occupies.
+fn content_height(png: &[u8]) -> u32 {
+    let img = image::load_from_memory(png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+    // Strict enough to see only text, not the heading band's light tint.
+    let inked = |y: u32| (0..width).any(|x| img.get_pixel(x, y).0[0] < 128);
+
+    let first = (0..height).find(|&y| inked(y));
+    let last = (0..height).rev().find(|&y| inked(y));
+    match (first, last) {
+        (Some(a), Some(b)) => b - a,
+        _ => 0,
+    }
+}
+
+/// A document of short, single-line bullets — nothing wraps, so the only
+/// vertical space between them is the list's item spacing.
+fn short_bullets_at(line_height: f32) -> CvDocument {
+    serde_json::from_value(json!({
+        "template": "flowcv",
+        "theme": { "lineHeight": line_height, "accent": "#000000", "fontFamily": "Source Sans 3" },
+        "basics": { "fullName": "T" },
+        "sections": [{
+            "id": "11111111-1111-4111-8111-111111111111",
+            "title": "Work", "visible": true, "kind": "experience",
+            "items": [{ "role": "Dev", "bullets": ["one", "two", "three", "four", "five"] }]
+        }]
+    }))
+    .unwrap()
+}
+
+#[test]
+fn line_height_spaces_bullets_apart_not_just_wrapped_lines() {
+    // The bug this guards: leading scaled with the line-height control but the
+    // list's item spacing was a fixed length. A bullet's own wrapped lines flew
+    // apart while the gap to the next bullet stayed put — and a document of
+    // single-line bullets, like this one, did not move at all.
+    let tight = content_height(&render_pngs(&short_bullets_at(1.0), 150.0).unwrap()[0]);
+    let loose = content_height(&render_pngs(&short_bullets_at(1.5), 150.0).unwrap()[0]);
+
+    assert!(
+        loose > tight,
+        "raising line height must space single-line bullets apart \
+         (tight={tight}px, loose={loose}px)"
+    );
+}
+
+/// The top edge of each band of inked rows, i.e. where every text line starts.
+///
+/// Measuring line positions rather than total ink height keeps descenders out
+/// of it — "Second bullet" has none and a wrapping sentence does, which is
+/// enough to shift a total-height comparison by several pixels.
+fn text_line_starts(png: &[u8]) -> Vec<u32> {
+    let img = image::load_from_memory(png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+    let inked = |y: u32| (0..width).any(|x| img.get_pixel(x, y).0[0] < 128);
+
+    let mut starts = Vec::new();
+    let mut inside = false;
+    for y in 0..height {
+        if inked(y) {
+            if !inside {
+                starts.push(y);
+            }
+            inside = true;
+        } else {
+            inside = false;
+        }
+    }
+    starts
+}
+
+#[test]
+fn a_bullet_boundary_and_a_line_wrap_advance_by_the_same_step() {
+    // One render, three list lines: a bullet that wraps onto a second line,
+    // then a second bullet. The step from line one to line two crosses a wrap;
+    // the step from line two to line three crosses a bullet boundary. If item
+    // spacing and line leading share a rhythm the two steps match — when item
+    // spacing was a fixed length they drifted apart as line height rose.
+    let doc: CvDocument = serde_json::from_value(json!({
+        "template": "flowcv",
+        "theme": { "lineHeight": 1.5, "accent": "#000000", "fontFamily": "Source Sans 3" },
+        "basics": {},
+        "sections": [{
+            "id": "11111111-1111-4111-8111-111111111111",
+            "title": "W", "visible": true, "kind": "experience",
+            "items": [{ "bullets": [
+                "A single bullet long enough that it certainly wraps onto a second line when \
+                 set across the full width of an A4 page at nine point, and no further.",
+                "Second bullet"
+            ]}]
+        }]
+    }))
+    .unwrap();
+
+    let starts = text_line_starts(&render_pngs(&doc, 150.0).unwrap()[0]);
+    let list = &starts[starts.len() - 3..];
+    let across_wrap = (list[1] - list[0]) as i64;
+    let across_boundary = (list[2] - list[1]) as i64;
+
+    assert!(
+        (across_wrap - across_boundary).abs() <= 2,
+        "a wrap advances {across_wrap}px but a bullet boundary advances \
+         {across_boundary}px — item spacing and leading have drifted apart"
+    );
+}

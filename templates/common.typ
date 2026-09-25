@@ -76,6 +76,8 @@
   align(right + top, right-side),
 )
 
+// `gap` is the space between items; pass the paragraph leading so a list
+// reads as one evenly-leaded block rather than clumping as line height grows.
 #let bullets(items, marker: [•], indent: 0pt, gap: 0.45em) = {
   let items = items.filter(b => rich-nonempty(b))
   if items.len() == 0 { return }
@@ -191,7 +193,7 @@
       if nonempty(it.at("location", default: "")) {
         block(spacing: 0.3em * t, (style.meta)(it.location))
       }
-      bullets(it.at("bullets", default: ()), gap: 0.45em * t)
+      bullets(it.at("bullets", default: ()), gap: style.leading)
     }
   }
 }

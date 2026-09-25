@@ -10,6 +10,8 @@
 #let accent = rgb(theme.accent)
 #let muted = luma(105)
 #let base-size = theme.fontSizePt * 1pt
+// Shared by paragraphs and list items so both follow the line-height control.
+#let leading = theme.lineHeight * 0.68em
 #let gap = theme.sectionGapMm * 1mm
 
 #set document(
@@ -23,7 +25,7 @@
 )
 
 #set text(font: theme.fontFamily, size: base-size, lang: "en", fallback: true)
-#set par(leading: theme.lineHeight * 0.68em, justify: false, spacing: theme.lineHeight * 0.78em)
+#set par(leading: leading, justify: false, spacing: theme.lineHeight * 0.78em)
 #show link: set text(fill: accent)
 
 // Headings always carry a rule here — it is the template's defining move — so
@@ -46,6 +48,7 @@
   title: body => text(weight: 600, size: base-size * 1.02, body),
   company: body => text(weight: 700, size: base-size * 1.12, fill: accent.darken(10%), body),
   meta: body => text(fill: muted, size: base-size * 0.92, body),
+  leading: leading,
   tight: 1.05,
 )
 

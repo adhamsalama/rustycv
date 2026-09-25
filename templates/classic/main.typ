@@ -11,6 +11,8 @@
 #let accent = rgb(theme.accent)
 #let muted = luma(95)
 #let base-size = theme.fontSizePt * 1pt
+// Shared by paragraphs and list items so both follow the line-height control.
+#let leading = theme.lineHeight * 0.65em
 #let gap = theme.sectionGapMm * 1mm
 
 #set document(
@@ -24,7 +26,7 @@
 )
 
 #set text(font: theme.fontFamily, size: base-size, lang: "en", fallback: true)
-#set par(leading: theme.lineHeight * 0.65em, justify: false, spacing: theme.lineHeight * 0.75em)
+#set par(leading: leading, justify: false, spacing: theme.lineHeight * 0.75em)
 #show link: set text(fill: accent)
 
 #let section-heading(title) = {
@@ -49,6 +51,7 @@
   // "who I worked for" from "what I did there" at a glance.
   company: body => text(weight: 700, size: base-size * 1.1, body),
   meta: body => text(fill: muted, size: base-size * 0.95, body),
+  leading: leading,
   tight: 1.0,
 )
 

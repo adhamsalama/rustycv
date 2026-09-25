@@ -15,6 +15,8 @@
 // Compact reads a notch below the requested size; the theme slider still moves
 // it, this just shifts the whole range down.
 #let base-size = theme.fontSizePt * 0.94pt
+// Shared by paragraphs and list items so both follow the line-height control.
+#let leading = theme.lineHeight * 0.58em
 #let gap = theme.sectionGapMm * 0.7mm
 
 #set document(
@@ -28,7 +30,7 @@
 )
 
 #set text(font: theme.fontFamily, size: base-size, lang: "en", fallback: true)
-#set par(leading: theme.lineHeight * 0.58em, justify: false, spacing: theme.lineHeight * 0.62em)
+#set par(leading: leading, justify: false, spacing: theme.lineHeight * 0.62em)
 #show link: set text(fill: accent)
 
 #let section-heading(title) = {
@@ -52,6 +54,7 @@
   company: body => text(weight: 700, size: base-size * 1.05, body),
   meta: body => text(fill: muted, size: base-size * 0.93, body),
   // The whole point of this template: two-thirds of the usual vertical rhythm.
+  leading: leading,
   tight: 0.62,
 )
 
