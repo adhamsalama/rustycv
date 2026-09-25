@@ -46,6 +46,8 @@ button, .primary, .secondary, .ghost {
 .secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
 .ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .ghost:hover { background: rgba(0, 0, 0, 0.05); color: var(--text); }
+button:disabled { opacity: 0.55; cursor: default; }
+button:disabled:hover { background: transparent; color: var(--muted); }
 .danger:hover { color: var(--danger); }
 
 /* ----------------------------------------------------------- dashboard */

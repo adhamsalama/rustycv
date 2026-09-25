@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useCvStore } from '../store'
-import type { HeadingStyle, PageSize } from '../types'
+import type { HeadingStyle, Metrics, PageSize } from '../types'
+import { METRIC_KEYS } from '../types'
 
 const HEADING_STYLES: { value: HeadingStyle; label: string }[] = [
   { value: 'bold', label: 'Bold' },
@@ -19,10 +20,30 @@ export function ThemePanel() {
   if (!document) return null
   const { theme } = document
 
+  // Defaults come from the chosen template, not one global set: `flowcv`
+  // reproduces a layout measured at 9pt/10mm, so resetting it to the generic
+  // 10pt/16mm would break the reproduction.
+  const defaults: Metrics | undefined = templates.find((t) => t.id === document.template)?.metrics
+  const atDefaults =
+    defaults !== undefined && METRIC_KEYS.every((key) => theme[key] === defaults[key])
+
   return (
     <section className="section-editor">
       <header className="section-head">
         <h2 className="section-title-static">Design</h2>
+        <button
+          type="button"
+          className="ghost"
+          disabled={defaults === undefined || atDefaults}
+          title={
+            atDefaults
+              ? 'Text size, line height, margins and section gap are already at this template\u2019s defaults'
+              : 'Reset text size, line height, margins and section gap'
+          }
+          onClick={() => defaults && patchTheme({ ...defaults })}
+        >
+          {atDefaults ? 'Spacing is default' : 'Reset spacing'}
+        </button>
       </header>
 
       <div className="item-fields">

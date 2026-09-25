@@ -278,3 +278,85 @@ fn every_template_handles_hidden_entries() {
         assert!(pdf.starts_with(b"%PDF"));
     }
 }
+
+#[test]
+fn standard_metrics_match_theme_default() {
+    // Two sources of truth for the same numbers would drift silently: a user on
+    // `classic` would reset and land somewhere other than a fresh CV's spacing.
+    let theme = rustycv_core::Theme::default();
+    let classic = rustycv_render::templates::get("classic").unwrap().metrics;
+
+    assert_eq!(classic.font_size_pt, theme.font_size_pt);
+    assert_eq!(classic.margin_mm, theme.margin_mm);
+    assert_eq!(classic.line_height, theme.line_height);
+    assert_eq!(classic.section_gap_mm, theme.section_gap_mm);
+}
+
+#[test]
+fn every_template_declares_metrics_that_survive_sanitizing() {
+    // Reset must land on a value the renderer will actually honour, otherwise
+    // the sliders would jump somewhere else on the next render.
+    for template in TEMPLATES {
+        let m = template.metrics;
+        let theme = rustycv_core::Theme {
+            font_size_pt: m.font_size_pt,
+            margin_mm: m.margin_mm,
+            line_height: m.line_height,
+            section_gap_mm: m.section_gap_mm,
+            ..Default::default()
+        };
+        let clamped = theme.sanitized();
+        assert_eq!(clamped.font_size_pt, m.font_size_pt, "{}", template.id);
+        assert_eq!(clamped.margin_mm, m.margin_mm, "{}", template.id);
+        assert_eq!(clamped.line_height, m.line_height, "{}", template.id);
+        assert_eq!(clamped.section_gap_mm, m.section_gap_mm, "{}", template.id);
+    }
+}
+
+#[test]
+fn the_flowcv_reference_uses_the_templates_own_metrics() {
+    // The fixture is the reproduction target, so its spacing and the template's
+    // declared defaults have to agree — otherwise "reset" would move the
+    // reference resume off the layout it was measured from.
+    let doc = fixture();
+    let m = rustycv_render::templates::get("flowcv").unwrap().metrics;
+
+    assert_eq!(doc.theme.font_size_pt, m.font_size_pt);
+    assert_eq!(doc.theme.margin_mm, m.margin_mm);
+    assert_eq!(doc.theme.line_height, m.line_height);
+    assert_eq!(doc.theme.section_gap_mm, m.section_gap_mm);
+}
+
+#[test]
+fn resetting_spacing_restores_the_reference_layout() {
+    // End-to-end statement of what the editor's reset control promises: whatever
+    // the sliders were dragged to, applying the template's metrics gets the
+    // original layout back exactly.
+    let reference = fixture();
+    let metrics = rustycv_render::templates::get(&reference.template)
+        .unwrap()
+        .metrics;
+
+    let mut dragged = reference.clone();
+    dragged.theme.font_size_pt = 13.0;
+    dragged.theme.margin_mm = 28.0;
+    dragged.theme.line_height = 1.4;
+    dragged.theme.section_gap_mm = 11.0;
+    assert_ne!(
+        render_pdf(&dragged).unwrap(),
+        render_pdf(&reference).unwrap(),
+        "the dragged sliders should actually change the layout"
+    );
+
+    let mut reset = dragged;
+    reset.theme.font_size_pt = metrics.font_size_pt;
+    reset.theme.margin_mm = metrics.margin_mm;
+    reset.theme.line_height = metrics.line_height;
+    reset.theme.section_gap_mm = metrics.section_gap_mm;
+
+    assert_eq!(
+        render_pdf(&reset).unwrap(),
+        render_pdf(&reference).unwrap(),
+        "reset should reproduce the reference byte for byte"
+    );
+}

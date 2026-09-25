@@ -107,11 +107,23 @@ export interface Cv {
   document: CvDocument
 }
 
+/** The spacing a template is designed around — where "reset design" lands. */
+export interface Metrics {
+  fontSizePt: number
+  marginMm: number
+  lineHeight: number
+  sectionGapMm: number
+}
+
 export interface TemplateInfo {
   id: string
   name: string
   description: string
+  metrics: Metrics
 }
+
+/** The theme fields the reset control owns. Keep in step with `Metrics`. */
+export const METRIC_KEYS = ['fontSizePt', 'marginMm', 'lineHeight', 'sectionGapMm'] as const
 
 export interface Diagnostic {
   severity: string

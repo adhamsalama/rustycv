@@ -75,11 +75,37 @@ pub const ICONS: &[(&str, &[u8])] = &[
 /// Helpers every template imports, mounted at `/common.typ`.
 pub const COMMON: &str = include_str!("../../../templates/common.typ");
 
+/// The spacing a template is designed around.
+///
+/// These are per-template rather than app-wide because "reset to defaults"
+/// has to mean something different for each: `flowcv` reproduces a layout
+/// measured at 9pt with 10mm margins, and resetting it to the generic 10pt
+/// would quietly break the reproduction.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Metrics {
+    pub font_size_pt: f32,
+    pub margin_mm: f32,
+    pub line_height: f32,
+    pub section_gap_mm: f32,
+}
+
+/// What most templates want, and what `Theme::default()` uses.
+/// `standard_metrics_match_theme_default` keeps the two from drifting.
+const STANDARD: Metrics = Metrics {
+    font_size_pt: 10.0,
+    margin_mm: 16.0,
+    line_height: 1.0,
+    section_gap_mm: 5.0,
+};
+
 pub struct Template {
     pub id: &'static str,
     pub name: &'static str,
     pub description: &'static str,
     pub source: &'static str,
+    /// Where "reset design" puts the spacing controls for this template.
+    pub metrics: Metrics,
 }
 
 pub const TEMPLATES: &[Template] = &[
@@ -88,24 +114,35 @@ pub const TEMPLATES: &[Template] = &[
         name: "Classic",
         description: "Single column, generous whitespace, ATS-friendly.",
         source: include_str!("../../../templates/classic/main.typ"),
+        metrics: STANDARD,
     },
     Template {
         id: "flowcv",
         name: "FlowCV",
         description: "Centred header, tinted section bands, roles behind a hairline.",
         source: include_str!("../../../templates/flowcv/main.typ"),
+        // Measured from the published FlowCV resume this template reproduces.
+        metrics: Metrics {
+            font_size_pt: 9.0,
+            margin_mm: 10.0,
+            ..STANDARD
+        },
     },
     Template {
         id: "modern",
         name: "Modern",
         description: "Accent-coloured headings with rules and a bolder name.",
         source: include_str!("../../../templates/modern/main.typ"),
+        metrics: STANDARD,
     },
     Template {
         id: "compact",
         name: "Compact",
         description: "Tighter type and spacing, for CVs that spill onto a second page.",
         source: include_str!("../../../templates/compact/main.typ"),
+        // Compact already tightens everything internally, so it starts from the
+        // standard numbers rather than pre-shrunk ones.
+        metrics: STANDARD,
     },
 ];
 

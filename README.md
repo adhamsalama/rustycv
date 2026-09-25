@@ -168,7 +168,7 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 24 tests
+cargo test --workspace     # 35 tests
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -179,6 +179,11 @@ unknown fields; every template renders the fixture, an empty document, and one
 blank entry of every section kind; hostile theme values are clamped rather than
 rejected; the API round-trips create → save → reload → export → import; and
 `flowcv` is asserted to still fit the reference resume on a single page.
+
+Two of the stronger ones render to pixels rather than eyeballing: hiding every
+entry in a section is asserted to render *identically* to deleting the section,
+and resetting dragged-about spacing sliders is asserted to reproduce the
+reference resume byte for byte.
 
 To eyeball the output, render every template to PDF and PNG:
 
@@ -225,6 +230,13 @@ Users pick a template and turn the knobs in `Theme` — accent, font, size,
 margins, line height, section gap, page size, heading style. **They never
 author Typst**, so no untrusted code reaches the compiler, and the `World`
 exposes nothing but the template, the icons and the CV itself.
+
+Each template declares the spacing it was designed around, served on
+`/api/templates` as `metrics`, and the editor's **Reset spacing** control
+restores text size, line height, margins and section gap to *that* template's
+values. They are per-template rather than app-wide on purpose: `flowcv`
+reproduces a layout measured at 9pt with 10mm margins, so resetting it to the
+generic 10pt/16mm would quietly break the reproduction.
 
 ## API
 

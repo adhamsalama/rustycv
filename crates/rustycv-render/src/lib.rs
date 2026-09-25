@@ -12,7 +12,7 @@ use typst::diag::Severity;
 use typst::WorldExt;
 use typst_layout::PagedDocument;
 
-pub use templates::{Template, TEMPLATES};
+pub use templates::{Metrics, Template, TEMPLATES};
 
 use world::CvWorld;
 

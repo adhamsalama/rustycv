@@ -31,6 +31,8 @@ struct TemplateInfo {
     id: &'static str,
     name: &'static str,
     description: &'static str,
+    /// Where the editor's "reset design" control puts the spacing sliders.
+    metrics: rustycv_render::Metrics,
 }
 
 async fn list_templates() -> Json<Vec<TemplateInfo>> {
@@ -41,6 +43,7 @@ async fn list_templates() -> Json<Vec<TemplateInfo>> {
                 id: t.id,
                 name: t.name,
                 description: t.description,
+                metrics: t.metrics,
             })
             .collect(),
     )
