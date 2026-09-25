@@ -171,7 +171,7 @@
 #let fc-bullets(items) = {
   let items = items.filter(b => rich-nonempty(b))
   if items.len() == 0 { return }
-  block(inset: (left: 0.8em), width: 100%, above: 0.32em, below: 0.32em, {
+  block(inset: (left: 0.8em), width: 100%, above: leading, below: leading, {
     set list(
       marker: box(baseline: -0.24em, circle(radius: base * 0.16, fill: black)),
       indent: 0pt,
@@ -215,7 +215,7 @@
       // bold, trailing part regular — with no employer heading and no rule.
       let it = group.items.first()
       let heading = entry-line(it, options.order, (url, body) => linked(url, body))
-      block(width: 100%, below: 0.1em, fc-row(heading, fc-date(it)))
+      block(width: 100%, below: leading, fc-row(heading, fc-date(it)))
       fc-bullets(it.at("bullets", default: ()))
       v(0.5em, weak: true)
     }
@@ -224,7 +224,7 @@
 
 #let fc-education(items) = {
   for it in items {
-    block(width: 100%, below: 0.1em, fc-row(
+    block(width: 100%, below: leading, fc-row(
       text(weight: 700, it.degree + if nonempty(it.at("institution", default: "")) { ", " } else { "" })
         + text(weight: "regular", it.at("institution", default: "")),
       fc-date(it),
@@ -261,7 +261,7 @@
 
 #let fc-certifications(items) = {
   for it in items {
-    block(width: 100%, below: 0.1em, fc-row(
+    block(width: 100%, below: leading, fc-row(
       linked(it.at("url", default: ""), text(weight: 700, it.name))
         + if nonempty(it.at("issuer", default: "")) { text(weight: "regular", ", " + it.issuer) } else { [] },
       text(weight: "regular", fmt-date(it.at("date", default: none))),

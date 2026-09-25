@@ -739,3 +739,43 @@ fn a_bullet_boundary_and_a_line_wrap_advance_by_the_same_step() {
          {across_boundary}px — item spacing and leading have drifted apart"
     );
 }
+
+#[test]
+fn an_entry_heading_sits_one_line_step_above_its_first_bullet() {
+    // The gap under a role title was its own fixed length, so the first bullet
+    // stayed clamped to the title while every bullet below it spread out as
+    // line height rose — and at the default it was already tighter than the
+    // bullet step. Every step through an entry should be the same, at any line
+    // height.
+    for line_height in [1.0f32, 1.5] {
+        let doc: CvDocument = serde_json::from_value(json!({
+            "template": "flowcv",
+            "theme": {
+                "lineHeight": line_height,
+                "accent": "#000000",
+                "fontFamily": "Source Sans 3"
+            },
+            "basics": {},
+            "sections": [{
+                "id": "11111111-1111-4111-8111-111111111111",
+                "title": "W", "visible": true, "kind": "experience",
+                "items": [{
+                    "role": "Staff Backend Engineer",
+                    "bullets": ["First bullet", "Second bullet", "Third bullet"]
+                }]
+            }]
+        }))
+        .unwrap();
+
+        let starts = text_line_starts(&render_pngs(&doc, 150.0).unwrap()[0]);
+        let tail = &starts[starts.len() - 4..];
+        let steps: Vec<i64> = tail.windows(2).map(|w| (w[1] - w[0]) as i64).collect();
+        let (min, max) = (*steps.iter().min().unwrap(), *steps.iter().max().unwrap());
+
+        assert!(
+            max - min <= 2,
+            "at line height {line_height} the steps through an entry were {steps:?} \
+             — heading to first bullet should match bullet to bullet"
+        );
+    }
+}

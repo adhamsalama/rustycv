@@ -180,7 +180,7 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 56 tests
+cargo test --workspace     # 57 tests
 pnpm -C web test           # 23 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings

@@ -183,7 +183,9 @@
         // Roles after the first in a group need a clear break from the previous
         // role's bullets; the first sits tight under its company heading.
         above: if not grouped { 0.95em * t } else if i == 0 { 0.4em * t } else { 0.85em * t },
-        below: 0.38em * t,
+        // Same rhythm as the bullets below it, so the line-height control
+        // moves this gap too rather than leaving the first bullet stranded.
+        below: style.leading,
         row(heading, (style.meta)(fmt-range(
           it.start,
           it.end,
