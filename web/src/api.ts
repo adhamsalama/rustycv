@@ -1,0 +1,76 @@
+import type { Cv, CvDocument, CvSummary, Diagnostic, TemplateInfo } from './types'
+
+/** An API error that carries the server's Typst diagnostics when it has them. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly diagnostics: Diagnostic[] = [],
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`/api${path}`, {
+    ...init,
+    headers: init?.body ? { 'content-type': 'application/json', ...init?.headers } : init?.headers,
+  })
+
+  if (!response.ok) {
+    throw await toApiError(response)
+  }
+  if (response.status === 204) {
+    return undefined as T
+  }
+  return response.json() as Promise<T>
+}
+
+async function toApiError(response: Response): Promise<ApiError> {
+  try {
+    const body = await response.json()
+    return new ApiError(body.error ?? response.statusText, response.status, body.diagnostics ?? [])
+  } catch {
+    return new ApiError(response.statusText, response.status)
+  }
+}
+
+export const api = {
+  templates: () => request<TemplateInfo[]>('/templates'),
+  fonts: () => request<string[]>('/fonts'),
+
+  listCvs: () => request<CvSummary[]>('/cvs'),
+  getCv: (id: string) => request<Cv>(`/cvs/${id}`),
+  createCv: (title?: string) =>
+    request<Cv>('/cvs', { method: 'POST', body: JSON.stringify({ title }) }),
+  duplicateCv: (id: string) =>
+    request<Cv>(`/cvs?from=${encodeURIComponent(id)}`, { method: 'POST', body: '{}' }),
+  saveCv: (id: string, document: CvDocument, title?: string) =>
+    request<Cv>(`/cvs/${id}`, { method: 'PUT', body: JSON.stringify({ title, document }) }),
+  deleteCv: (id: string) => request<void>(`/cvs/${id}`, { method: 'DELETE' }),
+  importCv: (document: CvDocument, title?: string) =>
+    request<Cv>('/cvs/import', { method: 'POST', body: JSON.stringify({ title, document }) }),
+
+  /**
+   * Render whatever is currently in the editor, saved or not.
+   *
+   * Takes a signal so a superseded keystroke's render can be abandoned instead
+   * of racing the one after it.
+   */
+  async renderPdf(document: CvDocument, signal?: AbortSignal): Promise<Blob> {
+    const response = await fetch('/api/render', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(document),
+      signal,
+    })
+    if (!response.ok) {
+      throw await toApiError(response)
+    }
+    return response.blob()
+  },
+
+  pdfUrl: (id: string) => `/api/cvs/${id}/pdf`,
+  exportUrl: (id: string) => `/api/cvs/${id}/export`,
+}

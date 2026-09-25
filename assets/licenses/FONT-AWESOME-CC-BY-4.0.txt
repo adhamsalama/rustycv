@@ -1,0 +1,6 @@
+Font Awesome Free 6 — https://fontawesome.com
+Icons (the SVG files in assets/icons/) are licensed under CC BY 4.0:
+https://creativecommons.org/licenses/by/4.0/
+
+Only the icon SVGs are used here; the Font Awesome webfonts and CSS are not
+included.

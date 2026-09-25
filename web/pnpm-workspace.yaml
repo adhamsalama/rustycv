@@ -1,0 +1,4 @@
+allowBuilds:
+  esbuild: true
+# esbuild ships a postinstall that fetches its platform binary; Vite is unusable
+# without it.

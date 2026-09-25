@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 1,
+  "template": "flowcv",
+  "theme": {
+    "accent": "#000000",
+    "fontFamily": "Source Sans 3",
+    "fontSizePt": 9.0,
+    "page": "a4",
+    "marginMm": 10.0,
+    "lineHeight": 1.0,
+    "sectionGapMm": 5.0,
+    "headingStyle": "bold"
+  },
+  "basics": {
+    "fullName": "Adham Salama Mustafa",
+    "headline": "Staff Backend Engineer",
+    "email": "adhamsalamamustafa@gmail.com",
+    "phone": "+201157192024",
+    "location": "Cairo, Egypt",
+    "links": [
+      {
+        "label": "GitHub",
+        "url": "https://github.com/adhamsalama"
+      },
+      {
+        "label": "LinkedIn",
+        "url": "https://www.linkedin.com/in/adhamsalama/"
+      },
+      {
+        "label": "Blog",
+        "url": "https://adhamsalama.dev"
+      }
+    ],
+    "summary": ""
+  },
+  "sections": [
+    {
+      "title": "Work Experience",
+      "visible": true,
+      "kind": "experience",
+      "items": [
+        {
+          "role": "Staff Backend Engineer",
+          "company": "Bosta",
+          "start": {
+            "year": 2026,
+            "month": 1
+          },
+          "current": true,
+          "bullets": [
+            "Set technical direction across 4 squads (11 backend engineers) in payment, ecosystem, growth, and consumer, owning architecture decisions and partnering with product on feature scope.",
+            "Architected and built a high-throughput CDC pipeline streaming MongoDB data into ClickHouse using Debezium, Google Pub/Sub, and Go, processing 540k+ events/minute to power all user-facing real-time analytics across the company.",
+            "Owned the technical side of Bosta's ISO 27001 audit, from validating pentest findings to remediation, unlocking a partnership with the Egyptian Ministry of Transport.",
+            "Co-designed the backend interview process for junior and senior engineers and conducted technical interviews, establishing a consistent technical hiring standard.",
+            "Implemented distributed tracing with OpenTelemetry and ClickHouse (via ClickStack), improving observability and reducing time to diagnose production issues.",
+            "Migrated logging infrastructure from GCP Cloud Logging to Elasticsearch using FluentBit, enhancing observability, reducing logging costs, and improving log search performance."
+          ]
+        },
+        {
+          "role": "Squad Lead | Senior Backend Engineer",
+          "company": "Bosta",
+          "start": {
+            "year": 2024,
+            "month": 11
+          },
+          "end": {
+            "year": 2026,
+            "month": 1
+          },
+          "bullets": [
+            "Led a team of 3 engineers in the platform squad, focused on improving performance, scalability, and security.",
+            "Led security for the platform, identifying and remediating vulnerabilities and driving incident response.",
+            "Built an automated fraud detection system using Stream Processing and Apache Flink.",
+            "Architected and built a real-time shipment SLA “Control Tower” to monitor compliance across every delivery phase using event-driven architecture and GCP Cloud Tasks, reducing SLA breaches through proactive delay detection and alerting.",
+            "Led development of sub-regional (L2) hub assignment, achieving 92% accuracy and 94% coverage by determining the correct zone within multi-zone hubs, improving last-mile precision and operational efficiency."
+          ]
+        },
+        {
+          "role": "Backend Engineer",
+          "company": "Bosta",
+          "start": {
+            "year": 2024,
+            "month": 4
+          },
+          "end": {
+            "year": 2024,
+            "month": 11
+          },
+          "bullets": [
+            "Improved automated delivery hub assignment to 98.5% accuracy and 99.8% coverage by replacing Google Maps with a custom in-house solution, saving tens of thousands of dollars and powering the largest automated sorting facility in the middle east.",
+            "Built Bosta Maps, an internal geocoding service using OpenStreetMap and PostGIS with custom search algorithms to reduce Google Maps API usage in supporting workflows, cutting external API costs."
+          ]
+        },
+        {
+          "role": "Backend Engineer",
+          "company": "Wuilt",
+          "companyUrl": "https://wuilt.com",
+          "start": {
+            "year": 2022,
+            "month": 6
+          },
+          "end": {
+            "year": 2024,
+            "month": 4
+          },
+          "bullets": [
+            "Built an event-driven reward system consuming signup events via Kafka to issue discounts across the website and store builders.",
+            "Built and deployed the company's first API documentation, enabling external companies to integrate with the platform.",
+            "Reduced API latency by 50% by caching CORS preflight responses."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Education",
+      "visible": true,
+      "kind": "education",
+      "items": [
+        {
+          "degree": "Computer Engineering",
+          "institution": "Shoubra Faculty of Engineering.",
+          "start": {
+            "year": 2017
+          },
+          "end": {
+            "year": 2022
+          },
+          "description": "Overall grade: Very Good with honors."
+        }
+      ]
+    },
+    {
+      "title": "Skills",
+      "visible": true,
+      "kind": "skills",
+      "groups": [
+        {
+          "name": "Languages",
+          "items": [
+            "TypeScript/JavaScript",
+            "Go",
+            "Python",
+            "Rust."
+          ]
+        },
+        {
+          "name": "Frameworks",
+          "items": [
+            "Node.js",
+            "Express.js",
+            "NestJS",
+            "Apollo Server",
+            "FastAPI",
+            "Django",
+            "Flask."
+          ]
+        },
+        {
+          "name": "Backend Engineering",
+          "items": [
+            "REST APIs",
+            "GraphQL",
+            "gRPC",
+            "WebSockets",
+            "WebRTC",
+            "WebAssembly",
+            "Microservices",
+            "OAuth",
+            "Event-Driven Architecture",
+            "Stream Processing."
+          ]
+        },
+        {
+          "name": "Databases & Messaging Systems",
+          "items": [
+            "PostgreSQL",
+            "MySQL",
+            "MongoDB",
+            "Elasticsearch",
+            "ClickHouse",
+            "Redis",
+            "SQLite",
+            "Kafka",
+            "GCP Pub/Sub",
+            "Apache Flink."
+          ]
+        },
+        {
+          "name": "DevOps",
+          "items": [
+            "Git",
+            "GitHub",
+            "GitLab",
+            "Linux",
+            "Docker",
+            "Kubernetes",
+            "CI/CD",
+            "AWS",
+            "GCP",
+            "Microsoft Azure",
+            "Helm."
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Projects",
+      "visible": true,
+      "kind": "projects",
+      "items": [
+        {
+          "name": "Cloud Nine",
+          "url": "https://cloudnine.run",
+          "description": "A cloud platform for provisioning isolated Linux containers with a live in-browser terminal, persistent storage, and automatic provisioning of subdomains and TLS certificates. Built with Go, Kubernetes, and React."
+        },
+        {
+          "name": "Nabatshy",
+          "url": "https://github.com/adhamsalama/nabatshy",
+          "description": "An open source observability platform in a single executable file built with OpenTelemetry, Go, DuckDB and React."
+        },
+        {
+          "name": "Blitzkrieg",
+          "url": "https://github.com/adhamsalama/blitzkrieg",
+          "description": "An HTTP web server written from scratch in Rust with no dependencies."
+        },
+        {
+          "name": "Redis",
+          "url": "https://github.com/adhamsalama/sider",
+          "description": "A multithreaded Redis implementation written from scratch in Rust with no dependencies."
+        },
+        {
+          "name": "WebRTC",
+          "url": "https://github.com/adhamsalama/webrtc",
+          "description": "A peer-to-peer videoconferencing web app featuring video, audio, and text chatting, and screen sharing built with WebRTC and Node.js from scratch with no dependencies."
+        }
+      ]
+    },
+    {
+      "title": "References",
+      "visible": true,
+      "kind": "references",
+      "items": [
+        {
+          "name": "Mohammad Galal",
+          "url": "https://www.linkedin.com/in/mohamed-g-abdelrahman",
+          "title": "VP of Engineering & Product",
+          "company": "Bosta"
+        }
+      ]
+    }
+  ]
+}

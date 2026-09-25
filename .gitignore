@@ -1,0 +1,9 @@
+/target
+**/node_modules
+web/dist
+*.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+/out
