@@ -40,12 +40,19 @@ impl Section {
         self.body.kind()
     }
 
+    /// True when nothing would render — no entries, or every entry hidden.
     pub fn is_empty(&self) -> bool {
-        self.body.len() == 0
+        self.body.visible_len() == 0
     }
 
+    /// Total entries, hidden ones included. This is the count the editor shows.
     pub fn len(&self) -> usize {
         self.body.len()
+    }
+
+    /// Entries that would actually render.
+    pub fn visible_len(&self) -> usize {
+        self.body.visible_len()
     }
 
     pub fn reassign_ids(&mut self) {
@@ -121,6 +128,24 @@ impl SectionBody {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn visible_len(&self) -> usize {
+        macro_rules! count {
+            ($items:expr) => {
+                $items.iter().filter(|it| it.visible).count()
+            };
+        }
+        match self {
+            Self::Experience { items } => count!(items),
+            Self::Education { items } => count!(items),
+            Self::Skills { groups } => count!(groups),
+            Self::Projects { items } => count!(items),
+            Self::Certifications { items } => count!(items),
+            Self::Languages { items } => count!(items),
+            Self::Interests { items } => count!(items),
+            Self::References { items } => count!(items),
+        }
     }
 
     fn reassign_ids(&mut self) {
@@ -209,12 +234,18 @@ macro_rules! item {
         #[serde(rename_all = "camelCase", default)]
         pub struct $name {
             pub id: Uuid,
+            /// Hidden entries stay in the document but are not rendered, so a CV
+            /// can be tailored for one application without deleting anything.
+            ///
+            /// The container-level `#[serde(default)]` fills this from `Default`,
+            /// so documents written before the field existed load as visible.
+            pub visible: bool,
             $( $(#[$fmeta])* pub $field: $ty, )*
         }
 
         impl Default for $name {
             fn default() -> Self {
-                Self { id: Uuid::new_v4(), $( $field: Default::default(), )* }
+                Self { id: Uuid::new_v4(), visible: true, $( $field: Default::default(), )* }
             }
         }
     };

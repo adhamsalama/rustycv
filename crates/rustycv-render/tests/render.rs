@@ -160,3 +160,121 @@ fn the_flowcv_template_reproduces_the_reference_resume_on_one_page() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("flowcv-reference.png"), &pages[0]).unwrap();
 }
+
+/// Set `visible` on every entry of the named section, returning how many changed.
+fn set_entries_visible(doc: &mut serde_json::Value, kind: &str, visible: bool) -> usize {
+    let mut changed = 0;
+    for section in doc["sections"].as_array_mut().unwrap() {
+        if section["kind"] != kind {
+            continue;
+        }
+        let key = if kind == "skills" { "groups" } else { "items" };
+        for item in section[key].as_array_mut().unwrap() {
+            item["visible"] = json!(visible);
+            changed += 1;
+        }
+    }
+    changed
+}
+
+fn render_page_one(value: &serde_json::Value) -> Vec<u8> {
+    let doc: CvDocument = serde_json::from_value(value.clone()).expect("document parses");
+    let pages = render_pngs(&doc, 96.0).expect("renders");
+    pages.into_iter().next().expect("at least one page")
+}
+
+#[test]
+fn hiding_an_entry_changes_the_output() {
+    let mut hidden: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    hidden["sections"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|s| s["kind"] == "projects")
+        .expect("fixture has projects")["items"][0]["visible"] = json!(false);
+
+    let before = render_page_one(&serde_json::from_str(FIXTURE).unwrap());
+    let after = render_page_one(&hidden);
+    assert_ne!(
+        before, after,
+        "hiding a project should change what is rendered"
+    );
+}
+
+#[test]
+fn hiding_every_entry_is_equivalent_to_removing_the_section() {
+    // The strongest statement of what "hidden" means: a section whose entries
+    // are all hidden must leave no trace at all — not even its heading band or
+    // the vertical space around it.
+    let mut all_hidden: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    let count = set_entries_visible(&mut all_hidden, "projects", false);
+    assert!(count > 1, "the fixture should have several projects");
+
+    let mut removed: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    removed["sections"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|s| s["kind"] != "projects");
+
+    assert_eq!(
+        render_page_one(&all_hidden),
+        render_page_one(&removed),
+        "hiding every entry should render exactly like deleting the section",
+    );
+}
+
+#[test]
+fn hidden_entries_do_not_disturb_company_grouping() {
+    // Bosta has three consecutive roles that render under one company heading.
+    // Hiding the middle one must leave the other two still grouped, which is
+    // only true if the filter runs before grouping rather than after.
+    let mut hidden: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    hidden["sections"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|s| s["kind"] == "experience")
+        .unwrap()["items"][1]["visible"] = json!(false);
+
+    let mut removed: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    removed["sections"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|s| s["kind"] == "experience")
+        .unwrap()["items"]
+        .as_array_mut()
+        .unwrap()
+        .remove(1);
+
+    assert_eq!(
+        render_page_one(&hidden),
+        render_page_one(&removed),
+        "a hidden role should render exactly like an absent one",
+    );
+}
+
+#[test]
+fn every_template_handles_hidden_entries() {
+    for template in TEMPLATES {
+        let mut doc: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+        doc["template"] = json!(template.id);
+        for kind in [
+            "experience",
+            "education",
+            "skills",
+            "projects",
+            "references",
+        ] {
+            set_entries_visible(&mut doc, kind, false);
+        }
+        let parsed: CvDocument = serde_json::from_value(doc).unwrap();
+        let pdf = render_pdf(&parsed).unwrap_or_else(|e| {
+            panic!(
+                "template `{}` failed with all entries hidden: {e:#?}",
+                template.id
+            )
+        });
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+}

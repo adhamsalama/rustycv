@@ -69,10 +69,19 @@
   groups
 }
 
-// Section dispatch: look up a section's entries whatever the key is called.
+// Section dispatch: look up a section's entries whatever the key is called,
+// dropping the ones the user has hidden.
+//
+// Filtering here rather than in each template means hidden entries disappear
+// everywhere at once — including from the grouping and "is this section empty?"
+// decisions that run off this list.
 #let section-items(section) = {
-  if section.kind == "skills" { section.at("groups", default: ()) }
-  else { section.at("items", default: ()) }
+  let raw = if section.kind == "skills" {
+    section.at("groups", default: ())
+  } else {
+    section.at("items", default: ())
+  }
+  raw.filter(it => it.at("visible", default: true) != false)
 }
 
 // ---------------------------------------------------------------------------

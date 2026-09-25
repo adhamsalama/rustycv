@@ -5,7 +5,7 @@ import { api } from '../api'
 import { useCvStore } from '../store'
 import { SECTION_KINDS, SECTION_SPECS } from '../sections'
 import type { SectionKind } from '../types'
-import { sectionItems } from '../types'
+import { sectionItems, visibleItems } from '../types'
 import { useDebounced } from '../hooks/useDebounced'
 import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
@@ -114,7 +114,11 @@ export function Editor() {
                         onClick={() => setPane({ kind: 'section', id: section.id })}
                       >
                         <span className={section.visible ? '' : 'muted'}>{section.title}</span>
-                        <span className="count">{sectionItems(section).length}</span>
+                        <span className="count">
+                          {visibleItems(section).length < sectionItems(section).length
+                            ? `${visibleItems(section).length}/${sectionItems(section).length}`
+                            : sectionItems(section).length}
+                        </span>
                       </button>
                     </div>
                   )}

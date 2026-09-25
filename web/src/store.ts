@@ -38,6 +38,7 @@ interface CvStore {
 
   addItem: (sectionId: string) => void
   updateItem: (sectionId: string, itemId: string, patch: Record<string, unknown>) => void
+  toggleItem: (sectionId: string, itemId: string) => void
   removeItem: (sectionId: string, itemId: string) => void
   moveItem: (sectionId: string, from: number, to: number) => void
 }
@@ -139,6 +140,11 @@ export const useCvStore = create<CvStore>()(
         withSection(sectionId, (section) => {
           const item = sectionItems(section).find((i: BaseItem) => i.id === itemId)
           if (item) Object.assign(item, patch)
+        }),
+      toggleItem: (sectionId, itemId) =>
+        withSection(sectionId, (section) => {
+          const item = sectionItems(section).find((i: BaseItem) => i.id === itemId)
+          if (item) item.visible = item.visible === false
         }),
       removeItem: (sectionId, itemId) =>
         withSection(sectionId, (section) => {

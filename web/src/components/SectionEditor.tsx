@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useCvStore } from '../store'
 import { SECTION_SPECS, type FieldSpec } from '../sections'
 import type { BaseItem, DateSpec, Section } from '../types'
-import { sectionItems } from '../types'
+import { sectionItems, visibleItems } from '../types'
 import { CheckboxField, DateField, LinesField, TagsField, TextArea, TextField } from './Fields'
 import { SortableList, SortableRow } from './Sortable'
 
@@ -87,11 +87,13 @@ function ItemCard({
   const spec = SECTION_SPECS[section.kind]
   const updateItem = useCvStore((s) => s.updateItem)
   const removeItem = useCvStore((s) => s.removeItem)
+  const toggleItem = useCvStore((s) => s.toggleItem)
+  const hidden = item.visible === false
 
   return (
     <SortableRow id={item.id}>
       {(handleProps) => (
-        <div className="item-card">
+        <div className={hidden ? 'item-card hidden' : 'item-card'}>
           <div className="item-head">
             <button
               type="button"
@@ -103,6 +105,16 @@ function ItemCard({
             </button>
             <button type="button" className="item-title" onClick={onToggle}>
               {spec.summary(item)}
+              {hidden ? <span className="pill">Hidden</span> : null}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              aria-pressed={hidden}
+              title={hidden ? 'Include this entry in the PDF' : 'Keep this entry but leave it out of the PDF'}
+              onClick={() => toggleItem(section.id, item.id)}
+            >
+              {hidden ? 'Show' : 'Hide'}
             </button>
             <button
               type="button"
@@ -138,6 +150,7 @@ function ItemCard({
 export function SectionEditor({ section }: { section: Section }) {
   const spec = SECTION_SPECS[section.kind]
   const items = sectionItems(section)
+  const visible = visibleItems(section)
   const { addItem, moveItem, renameSection, toggleSection, removeSection } = useCvStore()
 
   // Newly added entries open themselves; everything else starts collapsed so a
@@ -186,6 +199,11 @@ export function SectionEditor({ section }: { section: Section }) {
       </SortableList>
 
       {items.length === 0 ? <p className="muted">Nothing here yet.</p> : null}
+      {items.length > 0 && visible.length === 0 ? (
+        <p className="muted">
+          Every entry here is hidden, so this section will not appear in the PDF.
+        </p>
+      ) : null}
 
       <button
         type="button"

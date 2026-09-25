@@ -20,6 +20,10 @@ picture of it.
 Four built-in templates, including `flowcv` — a faithful reproduction of
 FlowCV's default single-column layout, measured from a real published resume.
 
+Whole sections **and individual entries** can be hidden rather than deleted, so
+one CV can be tailored per application without losing anything. A section whose
+entries are all hidden leaves no trace — not even its heading.
+
 ---
 
 ## Prerequisites

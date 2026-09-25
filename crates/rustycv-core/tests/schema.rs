@@ -104,3 +104,61 @@ fn empty_and_hidden_sections_are_not_rendered() {
     doc.sections[0].visible = false;
     assert_eq!(doc.visible_sections().count(), 0, "hidden sections skipped");
 }
+
+#[test]
+fn entries_are_visible_unless_said_otherwise() {
+    // Documents written before `visible` existed must load as visible, or
+    // upgrading the app would silently blank out everyone's CV.
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Projects","kind":"projects",
+             "items":[{"name":"A"},{"name":"B","visible":false}]}]}"#,
+    )
+    .unwrap();
+
+    assert_eq!(doc.sections[0].len(), 2, "both entries are kept");
+    assert_eq!(doc.sections[0].visible_len(), 1, "only one would render");
+}
+
+#[test]
+fn a_section_whose_entries_are_all_hidden_counts_as_empty() {
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Projects","kind":"projects",
+             "items":[{"name":"A","visible":false}]}]}"#,
+    )
+    .unwrap();
+
+    assert!(doc.sections[0].is_empty(), "nothing would render");
+    assert_eq!(
+        doc.visible_sections().count(),
+        0,
+        "so the section should not render its heading either"
+    );
+}
+
+#[test]
+fn hiding_an_entry_survives_a_round_trip() {
+    let mut doc: CvDocument = serde_json::from_str(FIXTURE).unwrap();
+    let section = doc
+        .sections
+        .iter_mut()
+        .find(|s| s.kind() == SectionKind::Projects)
+        .unwrap();
+
+    let json = serde_json::to_string(&section).unwrap();
+    assert!(
+        json.contains("\"visible\""),
+        "the flag is serialized per entry"
+    );
+
+    let before = section.visible_len();
+    let parsed: CvDocument = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(
+        parsed
+            .sections
+            .iter()
+            .find(|s| s.kind() == SectionKind::Projects)
+            .unwrap()
+            .visible_len(),
+        before
+    );
+}

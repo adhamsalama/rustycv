@@ -105,6 +105,10 @@ button, .primary, .secondary, .ghost {
 .item-title { flex: 1; text-align: left; background: transparent; border: none; font-weight: 500; color: var(--text); }
 .item-fields { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 12px 14px; }
 
+.item-card.hidden { background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 8px, #fafbfc 8px, #fafbfc 16px); border-style: dashed; }
+.item-card.hidden .item-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
+.pill { margin-left: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; text-decoration: none; display: inline-block; }
+
 .sortable.dragging { opacity: 0.6; }
 .drag-handle { color: var(--muted); background: transparent; border: none; cursor: grab; padding: 4px 6px; line-height: 1; }
 .drag-handle:active { cursor: grabbing; }

@@ -138,7 +138,7 @@ export const defaultTitle = (kind: SectionKind): string => SECTION_SPECS[kind].d
 
 /** A new entry with every field at its empty value, matching the Rust defaults. */
 export function blankItem(kind: SectionKind): BaseItem {
-  const item: BaseItem = { id: crypto.randomUUID() }
+  const item: BaseItem = { id: crypto.randomUUID(), visible: true }
   for (const field of SECTION_SPECS[kind].fields) {
     switch (field.type) {
       case 'checkbox':

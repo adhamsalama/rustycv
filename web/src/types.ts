@@ -45,9 +45,11 @@ export interface Basics {
   summary: string
 }
 
-/** Every item shares an id; the rest varies by section kind. */
+/** Every item shares an id and a visibility flag; the rest varies by kind. */
 export interface BaseItem {
   id: string
+  /** Hidden entries are kept in the document but left out of the PDF. */
+  visible: boolean
   [key: string]: unknown
 }
 
@@ -122,6 +124,11 @@ export interface Diagnostic {
 /** The entries of a section, whatever the key happens to be called. */
 export function sectionItems(section: Section): BaseItem[] {
   return section.kind === 'skills' ? section.groups : section.items
+}
+
+/** Entries that would actually appear in the PDF. */
+export function visibleItems(section: Section): BaseItem[] {
+  return sectionItems(section).filter((item) => item.visible !== false)
 }
 
 export function setSectionItems(section: Section, items: BaseItem[]): void {
