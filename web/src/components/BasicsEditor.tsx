@@ -86,7 +86,7 @@ export function BasicsEditor() {
           </div>
         ))}
       </div>
-      <button type="button" className="secondary" onClick={addLink}>
+      <button type="button" className="secondary" style={{marginTop: "10px"}} onClick={addLink}>
         Add link
       </button>
     </section>

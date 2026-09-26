@@ -34,7 +34,7 @@
   let label = if theme.headingStyle == "caps" {
     text(weight: 700, size: base-size * 0.92, tracking: 0.12em, fill: accent, upper(title))
   } else {
-    text(weight: 700, size: base-size * 1.05, tracking: 0.02em, fill: accent, title)
+    text(weight: 700, size: base-size * 1.1, tracking: 0.02em, fill: accent, title)
   }
   block(above: gap, below: 0.6em, {
     label
@@ -49,6 +49,7 @@
   company: body => text(weight: 700, size: base-size * 1.12, fill: accent.darken(10%), body),
   meta: body => text(fill: muted, size: base-size * 0.92, body),
   leading: leading,
+  line-height: theme.lineHeight,
   tight: 1.05,
 )
 
@@ -57,8 +58,9 @@
 #block(spacing: 0pt, {
   text(size: base-size * 2.2, weight: 700, fill: accent, basics.fullName)
   if nonempty(basics.headline) {
-    v(0.2em, weak: true)
-    text(size: base-size * 1.1, weight: 500, tracking: 0.04em, basics.headline)
+    v(0.4em, weak: true)
+    // h(0.8em)
+    text(size: base-size * 1.3, weight: 500, tracking: 0.04em, basics.headline)
   }
 })
 

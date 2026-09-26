@@ -125,6 +125,8 @@ pub const TEMPLATES: &[Template] = &[
         metrics: Metrics {
             font_size_pt: 9.0,
             margin_mm: 10.0,
+            // 3mm is what this template's original fixed 0.95em came to at 9pt.
+            section_gap_mm: 3.0,
             ..STANDARD
         },
     },

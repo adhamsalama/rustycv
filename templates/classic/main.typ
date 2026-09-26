@@ -52,6 +52,7 @@
   company: body => text(weight: 700, size: base-size * 1.1, body),
   meta: body => text(fill: muted, size: base-size * 0.95, body),
   leading: leading,
+  line-height: theme.lineHeight,
   tight: 1.0,
 )
 

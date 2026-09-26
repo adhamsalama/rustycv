@@ -158,17 +158,24 @@
 //   title(body)      an entry's headline (a role, a degree, a project name)
 //   company(body)    an employer heading above a run of roles
 //   meta(body)       dates and other secondary metadata
+//   leading          one line step, for gaps inside an entry
+//   line-height      the theme's multiplier, so breaks between entries scale too
 //   tight            multiplier on the vertical rhythm between entries
 // ---------------------------------------------------------------------------
 
 #let experience-section(items, style, options: (order: "roleFirst", group-promotions: true)) = {
-  let t = style.tight
+  // Breaks between entries are multiplied by the line height as well as the
+  // template's density, so the hierarchy holds at any setting instead of
+  // entries closing up as the text inside them spreads.
+  let t = style.tight * style.line-height
   for group in group-by-company(items, enabled: options.group-promotions) {
     // A run of roles at one employer gets a single company heading; a lone role
     // reads better inline as "Backend Engineer, Wuilt".
     let grouped = group.items.len() > 1
     if grouped {
-      block(above: 0.95em * t, below: 0.4em * t, (style.company)(maybe-link(
+      // One line step under the employer — a fixed value here left the first
+      // role clamped to the company name at high line heights.
+      block(above: 0.95em * t, below: style.leading, (style.company)(maybe-link(
         group.items.first().at("companyUrl", default: ""),
         group.company,
       )))
@@ -182,7 +189,13 @@
       block(
         // Roles after the first in a group need a clear break from the previous
         // role's bullets; the first sits tight under its company heading.
-        above: if not grouped { 0.95em * t } else if i == 0 { 0.4em * t } else { 0.85em * t },
+        above: if not grouped {
+          0.95em * t
+        } else if i == 0 {
+          style.leading
+        } else {
+          0.85em * t
+        },
         // Same rhythm as the bullets below it, so the line-height control
         // moves this gap too rather than leaving the first bullet stranded.
         below: style.leading,

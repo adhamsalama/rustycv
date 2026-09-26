@@ -22,6 +22,7 @@
 // leading alone would spread a bullet's own lines while leaving the gap to the
 // next bullet fixed.
 #let leading = theme.lineHeight * 0.5em
+#let section-gap = theme.sectionGapMm * 1mm
 #let rule-grey = rgb("#cccccc")
 
 // FlowCV tints the heading band with 7% black regardless of accent. Deriving it
@@ -141,19 +142,43 @@
 // ------------------------------------------------------------- components
 
 // The full-width tinted band that heads every section.
-#let fc-heading(title, kind) = block(
-  width: 100%,
-  above: 0.95em,
-  below: 0.6em,
-  fill: band,
-  radius: 2pt,
-  inset: (y: base * 0.25, x: 0.35em),
-  align(center, {
+// FlowCV's own heading is the tinted band with uppercase text; the other two
+// styles stay within that idiom rather than leaving the control inert.
+#let fc-heading(title, kind) = {
+  let uppercased = theme.headingStyle != "bold"
+  let label = {
     icon(section-icons.at(kind, default: "star"), size: base * 1.1, fill: accent)
     h(0.5em)
-    text(weight: 700, size: base * 1.111, tracking: 0.0375em, fill: accent, upper(title))
-  }),
-)
+    text(
+      weight: 700,
+      size: base * 1.111,
+      tracking: if uppercased { 0.0375em } else { 0.02em },
+      fill: accent,
+      if uppercased { upper(title) } else { title },
+    )
+  }
+
+  if theme.headingStyle == "underline" {
+    // The lighter treatment: no band, a hairline instead.
+    block(width: 100%, above: section-gap, below: 0.6em, {
+      align(center, label)
+      v(0.28em, weak: true)
+      line(length: 100%, stroke: 0.6pt + accent.lighten(55%))
+    })
+  } else {
+    block(
+      width: 100%,
+      above: section-gap,
+      // Structural, so it tracks the type size rather than the line-height
+      // control — the same 0.5em margin FlowCV puts under its heading.
+      below: 0.6em,
+      fill: band,
+      radius: 2pt,
+      inset: (y: base * 0.25, x: 0.35em),
+      align(center, label),
+    )
+  }
+}
 
 // FlowCV's 55/45 split: headline left, date right-aligned in the rest.
 #let fc-row(left-side, right-side) = grid(
@@ -200,11 +225,15 @@
     let grouped = group.items.len() > 1
     if grouped {
       // A run of roles at one employer: the company is named once, above.
-      block(width: 100%, below: 0.25em, text(weight: 700, group.company))
+      // One line step below the employer, like every other step in an entry.
+      // A fixed length here left the first role's ink touching the company
+      // name, and stayed put as line height rose.
+      block(width: 100%, below: leading, text(weight: 700, group.company))
       fc-indented({
         for (i, it) in group.items.enumerate() {
-          // Space between roles goes inside the rule, so the line stays unbroken.
-          if i > 0 { v(0.5em, weak: false) }
+          // Space between roles goes inside the rule, so the line stays
+          // unbroken. Scaled so the break grows with the text rhythm.
+          if i > 0 { v(leading, weak: false) }
           fc-row(text(weight: 700, it.role), fc-date(it))
           fc-bullets(it.at("bullets", default: ()))
         }
@@ -250,7 +279,8 @@
 
 #let fc-projects(items) = {
   for it in items {
-    block(width: 100%, below: 6pt, {
+    // FlowCV's 8px at its 12px type size; in em so it follows the size slider.
+    block(width: 100%, below: 0.667em, {
       linked(it.at("url", default: ""), text(weight: 700, it.name))
       if rich-nonempty(it.at("description", default: "")) { [, ] + rich(it.description) }
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))

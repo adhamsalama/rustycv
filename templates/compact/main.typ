@@ -55,6 +55,7 @@
   meta: body => text(fill: muted, size: base-size * 0.93, body),
   // The whole point of this template: two-thirds of the usual vertical rhythm.
   leading: leading,
+  line-height: theme.lineHeight,
   tight: 0.62,
 )
 

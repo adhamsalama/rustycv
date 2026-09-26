@@ -779,3 +779,124 @@ fn an_entry_heading_sits_one_line_step_above_its_first_bullet() {
         );
     }
 }
+
+// --------------------------------------------------------- theme audit
+
+/// Render the fixture on `template` with one theme field overridden.
+fn with_theme(template: &str, field: &str, value: serde_json::Value) -> Vec<u8> {
+    let mut doc: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    doc["template"] = json!(template);
+    doc["theme"][field] = value;
+    render_pdf(&serde_json::from_value(doc).unwrap())
+        .unwrap_or_else(|e| panic!("{template} failed with {field}: {e:#?}"))
+}
+
+#[test]
+fn every_theme_control_does_something_on_every_template() {
+    // A control wired to nothing is invisible in review — the section-gap
+    // slider did nothing at all on `flowcv` for several commits, because that
+    // template spaced its headings with a hardcoded length instead.
+    //
+    // Values are chosen inside `Theme::sanitized`'s clamps so a no-op here
+    // means the template ignores the field, not that the value was rejected.
+    let knobs: &[(&str, serde_json::Value, serde_json::Value)] = &[
+        ("fontSizePt", json!(8.0), json!(12.0)),
+        ("lineHeight", json!(0.9), json!(1.5)),
+        ("marginMm", json!(10.0), json!(25.0)),
+        ("sectionGapMm", json!(1.0), json!(12.0)),
+        ("accent", json!("#000000"), json!("#b42318")),
+        ("fontFamily", json!("Source Sans 3"), json!("IBM Plex Sans")),
+        ("page", json!("a4"), json!("letter")),
+        ("headingStyle", json!("bold"), json!("caps")),
+    ];
+
+    let mut dead = Vec::new();
+    for template in TEMPLATES {
+        for (field, low, high) in knobs {
+            if with_theme(template.id, field, low.clone())
+                == with_theme(template.id, field, high.clone())
+            {
+                dead.push(format!("{}.{field}", template.id));
+            }
+        }
+    }
+
+    assert!(dead.is_empty(), "theme controls with no effect: {dead:?}");
+}
+
+#[test]
+fn spacing_scales_with_type_size() {
+    // Gaps written in absolute pt or mm stay put while the glyphs around them
+    // grow, so a CV set larger gets relatively tighter.
+    //
+    // Every line here is short enough never to wrap, which matters: changing
+    // the type size changes where text wraps, and a document that reflows
+    // would change height for reasons that have nothing to do with spacing.
+    // The section gap is held at zero because it is deliberately a physical
+    // measurement and is meant not to scale.
+    for template in TEMPLATES {
+        let height_at = |size: f64| {
+            let doc: CvDocument = serde_json::from_value(json!({
+                "template": template.id,
+                "theme": {
+                    "fontSizePt": size,
+                    "sectionGapMm": 0.0,
+                    "accent": "#000000",
+                    "fontFamily": "Source Sans 3"
+                },
+                "basics": { "fullName": "Name", "headline": "Role" },
+                "sections": [
+                    {
+                        "id": "11111111-1111-4111-8111-111111111111",
+                        "title": "Work", "visible": true, "kind": "experience",
+                        "items": [
+                            { "role": "Alpha", "company": "Acme", "bullets": ["Alpha", "Alpha"] },
+                            { "role": "Beta", "company": "Acme", "bullets": ["Alpha"] },
+                            { "role": "Gamma", "company": "Other", "bullets": ["Alpha"] }
+                        ]
+                    },
+                    {
+                        "id": "22222222-2222-4222-8222-222222222222",
+                        "title": "Education", "visible": true, "kind": "education",
+                        "items": [{ "degree": "Alpha", "institution": "Acme",
+                                    "description": "Alpha" }]
+                    },
+                    {
+                        "id": "33333333-3333-4333-8333-333333333333",
+                        "title": "Skills", "visible": true, "kind": "skills",
+                        "groups": [{ "name": "Languages", "items": ["Rust"] }]
+                    },
+                    {
+                        "id": "44444444-4444-4444-8444-444444444444",
+                        "title": "Projects", "visible": true, "kind": "projects",
+                        "items": [{ "name": "Alpha", "description": "Beta" },
+                                  { "name": "Gamma", "description": "Delta" }]
+                    },
+                    {
+                        "id": "55555555-5555-4555-8555-555555555555",
+                        "title": "Certifications", "visible": true, "kind": "certifications",
+                        "items": [{ "name": "Alpha", "issuer": "Acme" }]
+                    },
+                    {
+                        "id": "66666666-6666-4666-8666-666666666666",
+                        "title": "References", "visible": true, "kind": "references",
+                        "items": [{ "name": "Alpha", "title": "Beta", "company": "Acme" }]
+                    }
+                ]
+            }))
+            .unwrap();
+            content_height(&render_pngs(&doc, 200.0).unwrap()[0]) as f64
+        };
+
+        let grew = height_at(12.0) / height_at(8.0);
+        let expected = 12.0 / 8.0;
+        let error = (grew / expected - 1.0).abs();
+
+        assert!(
+            error < 0.01,
+            "{}: type size went up {expected:.2}x but the content grew {grew:.3}x \
+             — some spacing is in absolute units rather than em",
+            template.id
+        );
+    }
+}

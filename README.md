@@ -10,12 +10,12 @@ specific application costs nothing and loses nothing, because there is no
 baked artifact to fall out of sync. Export gives you your data back, not a
 picture of it.
 
-| | |
-| --- | --- |
+|               |                                                                                                                                                                 |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Rendering** | [Typst](https://typst.app), linked as a Rust library and compiled from an in-memory `World` — no subprocess, no temp files, no filesystem access from templates |
-| **Backend** | Rust · axum · SQLite via sqlx |
-| **Frontend** | React · Vite · TypeScript · TipTap for rich text |
-| **Speed** | ~5 ms for a warm render of a full CV in release (~26 ms in a debug build) — which is what makes the live preview feel instant |
+| **Backend**   | Rust · axum · SQLite via sqlx                                                                                                                                   |
+| **Frontend**  | React · Vite · TypeScript · TipTap for rich text                                                                                                                |
+| **Speed**     | ~5 ms for a warm render of a full CV in release (~26 ms in a debug build) — which is what makes the live preview feel instant                                   |
 
 Four built-in templates, including `flowcv` — a faithful reproduction of
 FlowCV's default single-column layout, measured from a real published resume.
@@ -32,7 +32,7 @@ stored as a plain string, keeping exports readable.
 
 Work Experience carries two switches of its own, honoured by every template
 because they are document data rather than template decoration: whether an
-entry reads *Job title – Employer* or *Employer – Job title*, and whether
+entry reads _Job title – Employer_ or _Employer – Job title_, and whether
 consecutive roles at one employer are grouped under a single heading
 ("group promotions").
 
@@ -40,11 +40,11 @@ consecutive roles at one employer are grouped under a single heading
 
 ## Prerequisites
 
-| Tool | Minimum | Notes |
-| --- | --- | --- |
-| **Rust** | 1.92 | Required by Typst 0.15. Pinned in `Cargo.toml`, so an older toolchain fails with a clear message. Install via [rustup](https://rustup.rs). |
-| **Node.js** | `^20.19` or `>=22.12` | Required by Vite 7. Note 20.0–20.18 and 21.x will *not* work. |
-| **pnpm** | 10+ | Needed for the `onlyBuiltDependencies` setting in `pnpm-workspace.yaml`. `corepack enable pnpm`, or `npm i -g pnpm`. |
+| Tool        | Minimum               | Notes                                                                                                                                      |
+| ----------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Rust**    | 1.92                  | Required by Typst 0.15. Pinned in `Cargo.toml`, so an older toolchain fails with a clear message. Install via [rustup](https://rustup.rs). |
+| **Node.js** | `^20.19` or `>=22.12` | Required by Vite 7. Note 20.0–20.18 and 21.x will _not_ work.                                                                              |
+| **pnpm**    | 10+                   | Needed for the `onlyBuiltDependencies` setting in `pnpm-workspace.yaml`. `corepack enable pnpm`, or `npm i -g pnpm`.                       |
 
 Nothing else. SQLite is compiled in (`libsqlite3-sys` bundles it), and fonts and
 icons are embedded in the binary — there is no system dependency to install and
@@ -120,13 +120,13 @@ plus `web/dist`.
 
 All optional.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `DATABASE_URL` | `sqlite://rustycv.db` | SQLite file. Created automatically; migrations run at startup. |
-| `PORT` | `8080` | API/server port. |
-| `RUSTYCV_WEB_DIST` | `web/dist` | Where the built frontend lives. |
-| `RUST_LOG` | `rustycv_server=info,tower_http=warn` | Standard `tracing` filter. |
-| `RUSTYCV_API` | `http://127.0.0.1:8080` | Vite dev-server proxy target (frontend only). |
+| Variable           | Default                               | Meaning                                                        |
+| ------------------ | ------------------------------------- | -------------------------------------------------------------- |
+| `DATABASE_URL`     | `sqlite://rustycv.db`                 | SQLite file. Created automatically; migrations run at startup. |
+| `PORT`             | `8080`                                | API/server port.                                               |
+| `RUSTYCV_WEB_DIST` | `web/dist`                            | Where the built frontend lives.                                |
+| `RUST_LOG`         | `rustycv_server=info,tower_http=warn` | Standard `tracing` filter.                                     |
+| `RUSTYCV_API`      | `http://127.0.0.1:8080`               | Vite dev-server proxy target (frontend only).                  |
 
 ```sh
 DATABASE_URL=sqlite:///tmp/scratch.db PORT=9000 cargo run -p rustycv-server
@@ -140,15 +140,15 @@ Which command you need depends on what you touched — most confusion here comes
 from templates and assets being **compiled into the binary**, not read from disk
 at runtime.
 
-| You changed | Do this |
-| --- | --- |
-| `web/**` | Nothing in dev (Vite reloads). For the bundled server: `pnpm -C web build` |
-| Rust source | `cargo build` (or restart `cargo run`) |
-| `templates/**.typ` | `cargo build -p rustycv-render` — they're `include_str!`'d, so a stale binary keeps the old template |
-| `assets/fonts`, `assets/icons` | Same: `cargo build -p rustycv-render` |
-| `migrations/**` | `cargo build`, then restart. New migrations apply on startup; SQLite has no down-migrations here, so `rm rustycv.db*` to start clean |
-| `fixtures/adham.json` | `cargo run -p rustycv-server --bin seed` |
-| Dependencies | `cargo build` / `pnpm -C web install` |
+| You changed                    | Do this                                                                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `web/**`                       | Nothing in dev (Vite reloads). For the bundled server: `pnpm -C web build`                                                           |
+| Rust source                    | `cargo build` (or restart `cargo run`)                                                                                               |
+| `templates/**.typ`             | `cargo build -p rustycv-render` — they're `include_str!`'d, so a stale binary keeps the old template                                 |
+| `assets/fonts`, `assets/icons` | Same: `cargo build -p rustycv-render`                                                                                                |
+| `migrations/**`                | `cargo build`, then restart. New migrations apply on startup; SQLite has no down-migrations here, so `rm rustycv.db*` to start clean |
+| `fixtures/adham.json`          | `cargo run -p rustycv-server --bin seed`                                                                                             |
+| Dependencies                   | `cargo build` / `pnpm -C web install`                                                                                                |
 
 Full clean rebuild:
 
@@ -180,7 +180,7 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 57 tests
+cargo test --workspace     # 59 tests
 pnpm -C web test           # 23 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
@@ -194,7 +194,7 @@ rejected; the API round-trips create → save → reload → export → import; 
 `flowcv` is asserted to still fit the reference resume on a single page.
 
 Two of the stronger ones render to pixels rather than eyeballing: hiding every
-entry in a section is asserted to render *identically* to deleting the section,
+entry in a section is asserted to render _identically_ to deleting the section,
 and resetting dragged-about spacing sliders is asserted to reproduce the
 reference resume byte for byte.
 
@@ -225,12 +225,12 @@ Typst dependency tree.
 
 ## Templates
 
-| id | look |
-| --- | --- |
-| `flowcv` | Reproduction of FlowCV's default: centred header, tinted section bands, roles behind a hairline |
-| `classic` | Single column, generous whitespace, ATS-friendly *(default for new CVs)* |
-| `modern` | Accent-coloured ruled headings, bolder name |
-| `compact` | Tighter type and spacing, for CVs spilling onto a second page |
+| id        | look                                                                                            |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| `flowcv`  | Reproduction of FlowCV's default: centred header, tinted section bands, roles behind a hairline |
+| `classic` | Single column, generous whitespace, ATS-friendly _(default for new CVs)_                        |
+| `modern`  | Accent-coloured ruled headings, bolder name                                                     |
+| `compact` | Tighter type and spacing, for CVs spilling onto a second page                                   |
 
 `classic`, `modern` and `compact` share their section-rendering logic in
 `templates/common.typ` and differ only in page setup plus a `style` dict of
@@ -246,22 +246,22 @@ exposes nothing but the template, the icons and the CV itself.
 
 Each template declares the spacing it was designed around, served on
 `/api/templates` as `metrics`, and the editor's **Reset spacing** control
-restores text size, line height, margins and section gap to *that* template's
+restores text size, line height, margins and section gap to _that_ template's
 values. They are per-template rather than app-wide on purpose: `flowcv`
 reproduces a layout measured at 9pt with 10mm margins, so resetting it to the
 generic 10pt/16mm would quietly break the reproduction.
 
 ## API
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/templates`, `/api/fonts` | what the theme picker offers |
-| `GET` `POST` | `/api/cvs` | list; create (`?from=<id>` duplicates) |
-| `GET` `PUT` `DELETE` | `/api/cvs/{id}` | fetch / save / delete |
-| `POST` | `/api/render` | body = document → `application/pdf`; the live preview |
-| `GET` | `/api/cvs/{id}/pdf` | download, named after the person |
-| `GET` | `/api/cvs/{id}/export` | the document as JSON |
-| `POST` | `/api/cvs/import` | JSON → new CV |
+| Method               | Path                           | Purpose                                               |
+| -------------------- | ------------------------------ | ----------------------------------------------------- |
+| `GET`                | `/api/templates`, `/api/fonts` | what the theme picker offers                          |
+| `GET` `POST`         | `/api/cvs`                     | list; create (`?from=<id>` duplicates)                |
+| `GET` `PUT` `DELETE` | `/api/cvs/{id}`                | fetch / save / delete                                 |
+| `POST`               | `/api/render`                  | body = document → `application/pdf`; the live preview |
+| `GET`                | `/api/cvs/{id}/pdf`            | download, named after the person                      |
+| `GET`                | `/api/cvs/{id}/export`         | the document as JSON                                  |
+| `POST`               | `/api/cvs/import`              | JSON → new CV                                         |
 
 Preview and download share one render path, so what you see is what you get.
 A template that fails to compile returns **422** with structured Typst

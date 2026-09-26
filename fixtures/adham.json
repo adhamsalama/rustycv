@@ -8,8 +8,8 @@
     "page": "a4",
     "marginMm": 10.0,
     "lineHeight": 1.0,
-    "sectionGapMm": 5.0,
-    "headingStyle": "bold"
+    "sectionGapMm": 3.0,
+    "headingStyle": "caps"
   },
   "basics": {
     "fullName": "Adham Salama Mustafa",
