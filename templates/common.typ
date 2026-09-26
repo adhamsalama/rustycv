@@ -91,6 +91,14 @@
 // a list item's body, or a project's one-line description.
 #let rich-inline(value) = rich-filled(value).map(b => rich-runs(b.runs)).intersperse([ ]).sum(default: [])
 
+// The marker a bulleted list draws, from the theme's bullet control. `dot` is
+// the shape a template would otherwise have drawn on its own, so each passes
+// its own in rather than inheriting a generic one; `dash` is flat everywhere,
+// which is the whole point of picking it.
+#let bullet-marker(theme, dot: [•]) = {
+  if theme.at("bulletStyle", default: "dot") == "dash" { text("\u{2013}") } else { dot }
+}
+
 // Rich text as block content: paragraphs and lists stacked, with consecutive
 // list items of one kind gathered into a single list so their markers line up.
 //
@@ -227,6 +235,7 @@
 //   title(body)      an entry's headline (a role, a degree, a project name)
 //   company(body)    an employer heading above a run of roles
 //   meta(body)       dates and other secondary metadata
+//   marker           the list marker a bulleted description draws
 //   leading          one line step, for gaps inside an entry
 //   line-height      the theme's multiplier, so breaks between entries scale too
 //   tight            multiplier on the vertical rhythm between entries
@@ -279,7 +288,7 @@
       }
       // Highlights are a rich value like any other description: usually a
       // bulleted list, but paragraphs and a numbered list render here too.
-      rich(it.at("bullets", default: ()), gap: style.leading)
+      rich(it.at("bullets", default: ()), gap: style.leading, marker: style.marker)
     }
   }
 }
@@ -292,7 +301,7 @@
       (style.meta)(fmt-range(it.start, it.end, current: it.at("current", default: false))),
     ))
     if rich-nonempty(it.at("description", default: "")) {
-      block(spacing: 0.35em * t, rich(it.description, gap: style.leading))
+      block(spacing: 0.35em * t, rich(it.description, gap: style.leading, marker: style.marker))
     }
   }
 }
@@ -323,7 +332,7 @@
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))
       if tech.len() > 0 { [ ] + (style.meta)(tech.join(" · ")) }
       if not inline-description {
-        block(above: style.leading, below: 0pt, rich(description, gap: style.leading))
+        block(above: style.leading, below: 0pt, rich(description, gap: style.leading, marker: style.marker))
       }
     })
   }

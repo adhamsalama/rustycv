@@ -20,6 +20,7 @@ export interface DateSpec {
 
 export type PageSize = 'a4' | 'letter'
 export type HeadingStyle = 'bold' | 'underline' | 'caps'
+export type BulletStyle = 'dot' | 'dash'
 
 export interface Theme {
   accent: string
@@ -30,6 +31,7 @@ export interface Theme {
   lineHeight: number
   sectionGapMm: number
   headingStyle: HeadingStyle
+  bulletStyle: BulletStyle
 }
 
 export interface Link {

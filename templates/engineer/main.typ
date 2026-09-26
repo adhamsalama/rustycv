@@ -63,6 +63,8 @@
   })
 }
 
+#let marker = bullet-marker(theme)
+
 #let style = (
   heading: section-heading,
   title: body => text(weight: 600, size: base-size * 1.02, body),
@@ -70,6 +72,7 @@
   // "who I worked for" from "what I did there" at a glance.
   company: body => text(weight: 700, size: base-size * 1.1, body),
   meta: body => text(fill: muted, size: base-size * 0.93, body),
+  marker: marker,
   leading: leading,
   line-height: theme.lineHeight,
   // Denser than classic, nowhere near compact: this template keeps full-size
@@ -102,7 +105,7 @@
 
 #if rich-nonempty(basics.summary) {
   v(0.7em, weak: true)
-  rich(basics.summary, gap: leading)
+  rich(basics.summary, gap: leading, marker: marker)
 }
 
 #render-sections(cv, style)

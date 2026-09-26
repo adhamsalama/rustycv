@@ -48,11 +48,14 @@
   })
 }
 
+#let marker = bullet-marker(theme)
+
 #let style = (
   heading: section-heading,
   title: body => text(weight: 600, body),
   company: body => text(weight: 700, size: base-size * 1.05, body),
   meta: body => text(fill: muted, size: base-size * 0.93, body),
+  marker: marker,
   // The whole point of this template: two-thirds of the usual vertical rhythm.
   leading: leading,
   line-height: theme.lineHeight,
@@ -77,7 +80,7 @@
 
 #if rich-nonempty(basics.summary) {
   v(0.4em, weak: true)
-  rich(basics.summary, gap: leading)
+  rich(basics.summary, gap: leading, marker: marker)
 }
 
 #render-sections(cv, style)

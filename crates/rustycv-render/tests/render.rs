@@ -876,6 +876,7 @@ fn every_theme_control_does_something_on_every_template() {
         ("fontFamily", json!("Source Sans 3"), json!("IBM Plex Sans")),
         ("page", json!("a4"), json!("letter")),
         ("headingStyle", json!("bold"), json!("caps")),
+        ("bulletStyle", json!("dot"), json!("dash")),
     ];
 
     let mut dead = Vec::new();
@@ -1110,6 +1111,66 @@ fn a_list_in_a_description_sets_its_text_behind_a_marker() {
     assert!(
         bullet_right > plain_right + 4,
         "the item's text should be indented behind its marker: {bullet_right} vs {plain_right}"
+    );
+}
+
+/// The bounding box of a list marker: the first run of inked columns on line
+/// `line`, which is the marker alone — the item's body starts after the gap the
+/// body indent leaves, so nothing else can join that run.
+fn marker_box(png: &[u8], line: usize) -> (u32, u32) {
+    let img = image::load_from_memory(png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+    // Looser than the text threshold: an en dash is one thin stroke and its
+    // antialiased edges carry most of it.
+    let inked = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 200;
+
+    // The rows this line of text occupies.
+    let mut bands: Vec<(u32, u32)> = Vec::new();
+    for y in 0..height {
+        if (0..width).any(|x| inked(x, y)) {
+            match bands.last_mut() {
+                Some(b) if b.1 == y => b.1 = y + 1,
+                _ => bands.push((y, y + 1)),
+            }
+        }
+    }
+    let (top, bottom) = bands[line];
+
+    let column = |x: u32| (top..bottom).any(|y| inked(x, y));
+    let left = (0..width).find(|&x| column(x)).expect("the line has ink");
+    let right = (left..width).take_while(|&x| column(x)).last().unwrap();
+    let rows = (top..bottom)
+        .filter(|&y| (left..=right).any(|x| inked(x, y)))
+        .count() as u32;
+    (right - left + 1, rows)
+}
+
+#[test]
+fn the_dash_bullet_is_a_dash_and_the_dot_is_round() {
+    // The audit only proves the control changes *something*. This pins what:
+    // an en dash is a wide, flat stroke where the default marker is as tall as
+    // it is wide, so swapping one glyph for another would not pass here.
+    let render = |bullet_style: &str| {
+        let mut doc = doc_with_summary(
+            "classic",
+            json!([{ "kind": "bullet", "runs": [{ "text": "Alpha" }] }]),
+        );
+        doc.theme.bullet_style = serde_json::from_value(json!(bullet_style)).unwrap();
+        render_pngs(&doc, 300.0).unwrap()
+    };
+
+    let (dot_w, dot_h) = marker_box(&render("dot")[0], 1);
+    let (dash_w, dash_h) = marker_box(&render("dash")[0], 1);
+
+    assert!(
+        dot_w < dot_h * 2,
+        "the default marker should be round: {dot_w}x{dot_h}"
+    );
+    assert!(
+        dash_w > dash_h * 2,
+        "a dash should be far wider than it is tall: {dash_w}x{dash_h}"
     );
 }
 

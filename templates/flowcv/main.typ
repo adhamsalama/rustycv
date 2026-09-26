@@ -24,8 +24,11 @@
 #let leading = theme.lineHeight * 0.5em
 #let section-gap = theme.sectionGapMm * 1mm
 // A 4px dot at FlowCV's 96dpi reference, i.e. a third of the text size. Shared
-// by an entry's highlights and any list inside a description.
-#let fc-marker = box(baseline: -0.24em, circle(radius: base * 0.16, fill: black))
+// by an entry's highlights and any list inside a description, and handed to
+// `bullet-marker` as this template's dot so the theme's bullet control swaps
+// FlowCV's drawn circle rather than a generic glyph.
+#let fc-dot = box(baseline: -0.24em, circle(radius: base * 0.16, fill: black))
+#let fc-marker = bullet-marker(theme, dot: fc-dot)
 #let rule-grey = rgb("#cccccc")
 
 // FlowCV tints the heading band with 7% black regardless of accent. Deriving it

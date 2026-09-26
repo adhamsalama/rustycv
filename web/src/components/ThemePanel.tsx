@@ -1,13 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useCvStore } from '../store'
-import type { HeadingStyle, Metrics, PageSize } from '../types'
+import type { BulletStyle, HeadingStyle, Metrics, PageSize } from '../types'
 import { METRIC_KEYS } from '../types'
 
 const HEADING_STYLES: { value: HeadingStyle; label: string }[] = [
   { value: 'bold', label: 'Bold' },
   { value: 'underline', label: 'Bold + rule' },
   { value: 'caps', label: 'Uppercase' },
+]
+
+const BULLET_STYLES: { value: BulletStyle; label: string }[] = [
+  { value: 'dot', label: 'Dot \u2022' },
+  { value: 'dash', label: 'Dash \u2013' },
 ]
 
 export function ThemePanel() {
@@ -95,6 +100,22 @@ export function ThemePanel() {
               onChange={(e) => patchTheme({ headingStyle: e.target.value as HeadingStyle })}
             >
               {HEADING_STYLES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="half">
+          <label className="field">
+            <span className="field-label">Bullets</span>
+            <select
+              value={theme.bulletStyle}
+              onChange={(e) => patchTheme({ bulletStyle: e.target.value as BulletStyle })}
+            >
+              {BULLET_STYLES.map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>

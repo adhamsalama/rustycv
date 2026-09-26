@@ -43,11 +43,14 @@
   })
 }
 
+#let marker = bullet-marker(theme)
+
 #let style = (
   heading: section-heading,
   title: body => text(weight: 600, size: base-size * 1.02, body),
   company: body => text(weight: 700, size: base-size * 1.12, fill: accent.darken(10%), body),
   meta: body => text(fill: muted, size: base-size * 0.92, body),
+  marker: marker,
   leading: leading,
   line-height: theme.lineHeight,
   tight: 1.05,
@@ -75,7 +78,7 @@
 
 #if rich-nonempty(basics.summary) {
   v(0.8em, weak: true)
-  rich(basics.summary, gap: leading)
+  rich(basics.summary, gap: leading, marker: marker)
 }
 
 #render-sections(cv, style)

@@ -16,6 +16,8 @@ pub struct Theme {
     /// Vertical gap between sections, in mm.
     pub section_gap_mm: f32,
     pub heading_style: HeadingStyle,
+    /// The glyph a bulleted list uses for its marker.
+    pub bullet_style: BulletStyle,
 }
 
 impl Default for Theme {
@@ -29,6 +31,7 @@ impl Default for Theme {
             line_height: 1.0,
             section_gap_mm: 5.0,
             heading_style: HeadingStyle::Bold,
+            bullet_style: BulletStyle::Dot,
         }
     }
 }
@@ -77,4 +80,15 @@ pub enum HeadingStyle {
     Underline,
     /// Uppercase, letter-spaced.
     Caps,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BulletStyle {
+    /// A round bullet. What every template drew before this control existed,
+    /// so it has to stay the default or old CVs would re-render differently.
+    #[default]
+    Dot,
+    /// An en dash, the flat marker plain-text and ATS-oriented CVs tend to use.
+    Dash,
 }

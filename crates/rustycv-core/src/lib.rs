@@ -19,7 +19,7 @@ pub use section::{
     CertificationItem, EducationItem, EntryOrder, ExperienceItem, InterestItem, LanguageItem,
     ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
 };
-pub use theme::{HeadingStyle, PageSize, Theme};
+pub use theme::{BulletStyle, HeadingStyle, PageSize, Theme};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

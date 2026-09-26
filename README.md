@@ -289,9 +289,9 @@ heading band are specific enough that reusing the shared ones would distort
 both.
 
 Users pick a template and turn the knobs in `Theme` — accent, font, size,
-margins, line height, section gap, page size, heading style. **They never
-author Typst**, so no untrusted code reaches the compiler, and the `World`
-exposes nothing but the template, the icons and the CV itself.
+margins, line height, section gap, page size, heading style, bullet marker.
+**They never author Typst**, so no untrusted code reaches the compiler, and
+the `World` exposes nothing but the template, the icons and the CV itself.
 
 Each template declares the spacing it was designed around, served on
 `/api/templates` as `metrics`, and the editor's **Reset spacing** control
