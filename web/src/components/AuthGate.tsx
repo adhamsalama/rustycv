@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ApiError, api } from '../api'
-import { Login } from '../pages/Login'
+import { Landing } from '../pages/Landing'
 import { ME } from '../session'
 
 /**
@@ -24,5 +24,5 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // form reads worse than a beat of nothing.
   if (isLoading) return null
 
-  return user ? <>{children}</> : <Login />
+  return user ? <>{children}</> : <Landing />
 }

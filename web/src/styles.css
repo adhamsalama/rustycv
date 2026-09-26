@@ -344,24 +344,17 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 /* --------------------------------------------------------------- accounts */
 
-.auth-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
-.auth-corner { position: fixed; top: 16px; right: 16px; }
-
 .auth-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 100%;
-  max-width: 340px;
-  padding: 28px;
+  padding: 24px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
 
-.auth-card h1 { margin: 0; }
-/* The blurb sits tighter to the heading than to the fields below it. */
-.auth-card > p.muted { margin: -8px 0 4px; }
+.auth-card h2 { font-size: 15px; margin: 0 0 4px; }
 .auth-card .primary { justify-content: center; margin-top: 4px; }
 .auth-switch { justify-content: center; font-size: 12px; }
 
@@ -378,3 +371,88 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 .account-menu { display: flex; align-items: center; gap: 8px; }
 /* Long addresses truncate rather than pushing the buttons off the header. */
 .account-email { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- landing */
+
+/* Slightly larger than the app: this is the one screen that is read rather
+   than operated, and 14px prose in a wide column is hard work. */
+.landing { font-size: 15px; line-height: 1.6; }
+.landing > * { max-width: 1040px; margin: 0 auto; padding-inline: 24px; }
+
+.landing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 20px;
+}
+
+.wordmark { font-weight: 600; letter-spacing: -0.01em; }
+
+.landing h1 {
+  /* Scales with the viewport instead of breaking at one arbitrary width. */
+  font-size: clamp(30px, 4.6vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  font-weight: 600;
+  margin: 0 0 16px;
+  /* Keeps the last line from being one orphaned word. */
+  text-wrap: balance;
+}
+
+/* Measure, not width: prose past ~70 characters a line is tiring to read. */
+.landing .lede { color: var(--muted); max-width: 58ch; margin: 0 0 16px; }
+
+.landing-facts { color: var(--muted); font-size: 13px; margin: 0; }
+.landing-facts span { padding-inline: 6px; }
+
+.landing-hero {
+  display: grid;
+  grid-template-columns: 1.15fr minmax(300px, 360px);
+  gap: 56px;
+  align-items: start;
+  padding-block: 40px 64px;
+}
+
+.landing-section { padding-block: 40px; border-top: 1px solid var(--border); }
+.landing-section h2 { font-size: 20px; letter-spacing: -0.015em; margin: 0 0 10px; }
+
+.landing-templates {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0 48px;
+  margin: 24px 0 0;
+}
+
+/* A rule per row rather than a card per template: six boxes would read as a
+   pricing table, and these are one list. */
+.landing-templates > div {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 16px;
+  padding-block: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.landing-templates dt { font-weight: 600; }
+.landing-templates dd { margin: 0; color: var(--muted); }
+
+.landing-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
+.landing-notes h3 { font-size: 15px; margin: 0 0 8px; }
+.landing-notes p { margin: 0; color: var(--muted); }
+
+.landing-foot { padding-block: 32px 48px; border-top: 1px solid var(--border); }
+.landing-foot p { margin: 0; }
+
+@media (max-width: 860px) {
+  .landing-hero { grid-template-columns: 1fr; gap: 36px; padding-block: 24px 48px; }
+  /* The form leads on a phone: anyone who already has an account is here to
+     sign in, and the pitch is still one scroll away. */
+  .landing-form { order: -1; }
+  .landing-templates,
+  .landing-notes { grid-template-columns: 1fr; gap: 28px; }
+  .landing-templates { gap: 0; }
+}
+
+@media (max-width: 460px) {
+  .landing-templates > div { grid-template-columns: 1fr; gap: 2px; }
+}
