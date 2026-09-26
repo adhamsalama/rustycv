@@ -80,6 +80,9 @@ export function Editor() {
 
   const [pane, setPane] = usePane()
   const { state: saveState, renderAt } = useAutosave(id, revision)
+  // The outline becomes a slide-in drawer once it no longer fits beside the
+  // pane; closed by default so a phone doesn't open on top of it.
+  const [outlineOpen, setOutlineOpen] = useState(false)
 
   if (isLoading) return <main className="centered">Loading…</main>
   if (error) return <main className="centered">Could not load this CV.</main>
@@ -88,9 +91,24 @@ export function Editor() {
   const activeSection =
     pane.kind === 'section' ? document.sections.find((s) => s.id === pane.id) : undefined
 
+  // Choosing anything from the drawer is the signal that its job is done.
+  const choose = (next: Pane) => {
+    setPane(next)
+    setOutlineOpen(false)
+  }
+
   return (
     <div className="editor">
       <header className="topbar">
+        <button
+          type="button"
+          className="ghost outline-toggle"
+          aria-label="Show sections"
+          aria-expanded={outlineOpen}
+          onClick={() => setOutlineOpen((o) => !o)}
+        >
+          ☰
+        </button>
         <Link to="/" className="ghost">
           ← All CVs
         </Link>
@@ -114,18 +132,21 @@ export function Editor() {
       </header>
 
       <div className="editor-body">
-        <nav className="outline">
+        {outlineOpen ? (
+          <div className="outline-scrim" onClick={() => setOutlineOpen(false)} />
+        ) : null}
+        <nav className={outlineOpen ? 'outline open' : 'outline'}>
           <button
             type="button"
             className={pane.kind === 'details' ? 'outline-item active' : 'outline-item'}
-            onClick={() => setPane({ kind: 'details' })}
+            onClick={() => choose({ kind: 'details' })}
           >
             Details
           </button>
           <button
             type="button"
             className={pane.kind === 'design' ? 'outline-item active' : 'outline-item'}
-            onClick={() => setPane({ kind: 'design' })}
+            onClick={() => choose({ kind: 'design' })}
           >
             Design
           </button>
@@ -155,7 +176,7 @@ export function Editor() {
                             ? 'outline-item active'
                             : 'outline-item'
                         }
-                        onClick={() => setPane({ kind: 'section', id: section.id })}
+                        onClick={() => choose({ kind: 'section', id: section.id })}
                       >
                         <span className={section.visible ? '' : 'muted'}>{section.title}</span>
                         <span className="count">
@@ -176,7 +197,7 @@ export function Editor() {
             onAdd={(kind) => {
               store.addSection(kind)
               const added = useCvStore.getState().document?.sections.at(-1)
-              if (added) setPane({ kind: 'section', id: added.id })
+              if (added) choose({ kind: 'section', id: added.id })
             }}
           />
         </nav>

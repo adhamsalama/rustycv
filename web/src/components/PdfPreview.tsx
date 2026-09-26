@@ -135,7 +135,7 @@ export function PdfPreview({
         <div className="preview-empty">{state.error ? 'No preview' : 'Rendering your CV…'}</div>
       )}
 
-      {expanded && state.url ? <ExpandedPreview url={state.url} onClose={close} /> : null}
+      {expanded ? <ExpandedPreview url={state.url} onClose={close} /> : null}
     </div>
   )
 }
@@ -147,7 +147,7 @@ export function PdfPreview({
  * `overflow` can clip it, and reusing the preview's existing blob URL so
  * opening it costs nothing and it keeps updating as you edit.
  */
-function ExpandedPreview({ url, onClose }: { url: string; onClose: () => void }) {
+function ExpandedPreview({ url, onClose }: { url: string | null; onClose: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -184,7 +184,11 @@ function ExpandedPreview({ url, onClose }: { url: string; onClose: () => void })
         ✕
       </button>
       <div className="lightbox-sheet">
-        <iframe className="lightbox-frame" title="Full CV preview" src={`${url}#toolbar=0&view=FitH`} />
+        {url ? (
+          <iframe className="lightbox-frame" title="Full CV preview" src={`${url}#toolbar=0&view=FitH`} />
+        ) : (
+          <div className="centered">Rendering your CV…</div>
+        )}
       </div>
     </div>,
     window.document.body,

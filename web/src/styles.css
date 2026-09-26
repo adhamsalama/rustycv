@@ -127,7 +127,9 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 /* -------------------------------------------------------------- editor */
 
-.editor { height: 100vh; display: flex; flex-direction: column; }
+/* dvh so a phone's address bar collapsing doesn't leave a gap under the
+   footer that 100vh (sized to the largest possible viewport) can't see. */
+.editor { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
 .topbar {
   display: flex; align-items: center; gap: 10px;
@@ -136,10 +138,24 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 .cv-title { font-size: 15px; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; min-width: 200px; }
 .cv-title:hover, .cv-title:focus { border-color: var(--border); background: var(--bg); }
 
+/* Shown only once the outline has somewhere to hide — the drawer further
+   down — rather than sitting beside the pane as a normal column. */
+.outline-toggle { display: none; width: 30px; height: 28px; padding: 0; justify-content: center; font-size: 15px; }
+
 .save-state { font-size: 12px; color: var(--muted); }
 .save-error { color: var(--danger); }
 
-.editor-body { flex: 1; display: grid; grid-template-columns: 220px minmax(320px, 1fr) minmax(360px, 1.1fr); min-height: 0; }
+/* All three columns are `minmax`, so narrowing the window shrinks each pane
+   continuously — the preview included — instead of holding a fixed width
+   until it runs out of room and drops out. Below the breakpoint further down,
+   the columns can't shrink any further without unreadable text, and that is
+   the one point where the layout actually changes shape. */
+.editor-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(160px, 200px) minmax(260px, 1fr) minmax(280px, 1fr);
+  min-height: 0;
+}
 
 .outline { border-right: 1px solid var(--border); background: var(--surface); padding: 12px 8px; overflow-y: auto; }
 .outline-head { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 6px 8px; font-size: 11px; }
@@ -156,6 +172,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 .pane { overflow-y: auto; padding: 20px; min-width: 0; }
 .preview-pane { border-left: 1px solid var(--border); background: var(--paper-surround); min-width: 0; display: flex; }
+.outline-scrim { display: none; }
 
 /* ------------------------------------------------------------- editing */
 
@@ -337,9 +354,61 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 .diagnostics { margin: 0; padding: 10px 16px; background: var(--warn-bg); color: var(--warn-text); list-style: none; font-size: 12px; border-bottom: 1px solid var(--warn-border); max-height: 30%; overflow-y: auto; }
 .diagnostics code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-@media (max-width: 1100px) {
-  .editor-body { grid-template-columns: 180px 1fr; }
-  .preview-pane { display: none; }
+/* The three columns' own minimums (200 + 260 + 280) sum to 740: below that
+   plus the outline's border and the pane's padding, something has to give.
+   Rather than pick one pane to squeeze past readability, the layout stacks
+   instead: fields on top, the rendered CV below them (not hidden — scrolling
+   past the fields is what "smaller screen" already means here), and the
+   outline becomes a drawer since a section list doesn't need to sit beside
+   the thing it navigates. */
+@media (max-width: 900px) {
+  .editor-body {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  /* The outer .editor-body scrolls now, so the pane doesn't need its own
+     scroll region — two nested scrollbars is worse than one. */
+  .pane { overflow-y: visible; }
+  .preview-pane {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    /* Tall enough to read a page of the CV without feeling like a sliver,
+       short enough that it doesn't push the fields above out of reach. */
+    flex: 0 0 70vh;
+    min-height: 360px;
+  }
+  .outline-toggle { display: inline-flex; }
+
+  /* Fixed to the viewport, not the scrolling .editor-body, so opening it
+     doesn't depend on being scrolled back to the top first. */
+  .outline {
+    position: fixed;
+    inset: 0 25% 0 0;
+    z-index: 20;
+    max-width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.15s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
+  }
+  .outline.open { transform: translateX(0); }
+
+  .outline-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 19;
+    background: rgba(24, 26, 30, 0.4);
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar { flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; }
+  /* Every other topbar control is a fixed-size button; the title is the one
+     that would otherwise be squeezed unreadable, so it alone claims a full
+     row and pushes the rest of the row's controls onto the next. */
+  .cv-title { min-width: 0; flex: 1 1 100%; }
+  .topbar .spacer { flex-basis: 100%; height: 0; }
 }
 
 /* --------------------------------------------------------------- accounts */
