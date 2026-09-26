@@ -224,11 +224,55 @@ pushes to whatever `IMAGE` names at the top of the file.
 
 ---
 
+---
+
+## Rendering in the browser
+
+The editor can compile PDFs locally instead of asking the server for one. The
+⚡/☁ button in the editor's toolbar switches between the two, and the choice is
+remembered per browser.
+
+It is the **same renderer** either way: `crates/rustycv-wasm` is a shim over
+the very `render_pdf` the server calls, compiled to `wasm32-unknown-unknown`
+with the same templates, icons and fonts embedded in it. The two produce
+identical bytes — the fixture renders to the same SHA-256 through both — so
+this chooses a machine, never an output.
+
+What it buys is the round trip. After the module has loaded, a re-render of the
+fixture takes single-digit milliseconds, because Typst's incremental cache is
+sitting in the tab. What it costs is that module: about 30 MB, 9 MB over a
+Brotli-compressed connection, fetched once and then in the HTTP cache. That is
+why the server stays the default.
+
+The module is **optional at every level**. It is not checked in, the editor
+builds and runs without it, and an editor that cannot load one says so on the
+preview and goes back to the server. Same for a render that fails in a way the
+server might not hit — a module cached from before a new template shipped, or a
+panic — while a template that genuinely does not compile is shown as the
+compile error it is, because the server would only fail the same way slower.
+
+To build it:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked   # must match the crate
+just wasm                                                    # → web/public/wasm/
+```
+
+`just wasm` checks that version for you against `Cargo.lock` and refuses rather
+than letting wasm-bindgen fail with a schema error that names no versions. It
+also runs `wasm-opt -Oz` if [binaryen](https://github.com/WebAssembly/binaryen)
+is on your PATH, which is worth a few megabytes and is otherwise skipped.
+
+Vite copies `web/public/` verbatim into `web/dist/`, so the wasm has to be
+built *before* `pnpm -C web build` to be served. The Docker image does this in
+its own stage, so a published image always has it.
+
 ## Tests
 
 ```sh
-cargo test --workspace     # 110 tests
-pnpm -C web test           # 55 tests, the rich-text conversions
+cargo test --workspace     # 124 tests
+pnpm -C web test           # 65 tests, the rich-text conversions and the renderer switch
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -246,6 +290,14 @@ the caps refuse the eleventh CV and the eleventh application and let go again
 once one is deleted; a session is revoked by signing out rather than only
 forgotten; and the rate limiter is asserted to count failed sign-ins, to follow
 the account across two sessions, and to leave everybody else alone.
+
+The browser renderer is covered by asserting that it is not a second render
+path: the shim's output is asserted equal to `render_pdf`'s for the same
+document, and its failure body equal to the one the API answers with. On the
+editor's side, what is tested is the decision it makes — a broken template is
+shown, a broken module is fallen back from — and that a locally rendered
+download lands on the same filename the server's `Content-Disposition` would
+have named.
 
 Two of the stronger ones render to pixels rather than eyeballing: hiding every
 entry in a section is asserted to render _identically_ to deleting the section,
@@ -267,6 +319,7 @@ open target/render-out/
 crates/rustycv-core      the CV document model — the thing we persist
 crates/rustycv-render    Typst World, templates, fonts, PDF/PNG export
 crates/rustycv-server    axum routes, sqlx storage, seed binary
+crates/rustycv-wasm      the same renderer, compiled for the browser
 templates/               .typ sources, embedded at build time
 assets/fonts, /icons     embedded at build time
 migrations/              sqlx migrations
@@ -275,7 +328,8 @@ web/                     React editor
 ```
 
 Three crates rather than one so that editing a route doesn't recompile the
-Typst dependency tree.
+Typst dependency tree — plus a fourth that is a few dozen lines of shim over
+the third.
 
 ## Templates
 

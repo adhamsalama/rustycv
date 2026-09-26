@@ -3,6 +3,11 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+  // The render worker is constructed as a module worker, so build it as one.
+  // Vite's default is an IIFE, which happens to run inside a module too — but
+  // only by accident, and the accident would stop covering us the moment the
+  // worker wanted a static import.
+  worker: { format: 'es' },
   server: {
     port: 5173,
     // The Rust API owns /api; everything else is the SPA.

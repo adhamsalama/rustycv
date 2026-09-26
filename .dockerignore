@@ -3,6 +3,8 @@
 target
 **/node_modules
 web/dist
+# The wasm stage builds its own; a local one would only bloat the context.
+web/public/wasm
 *.tsbuildinfo
 .git
 .github

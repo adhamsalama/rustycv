@@ -7,7 +7,8 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { api, ApiError } from '../api'
+import { ApiError } from '../api'
+import { renderPdf, type RenderMode } from '../renderer'
 import type { CvDocument, Diagnostic } from '../types'
 
 interface PreviewState {
@@ -15,6 +16,10 @@ interface PreviewState {
   pending: boolean
   diagnostics: Diagnostic[]
   error: string | null
+  /** Where the render on screen was compiled, once one has succeeded. */
+  renderedBy: RenderMode | null
+  /** Why that is not where it was asked for, when it isn't. */
+  fellBackBecause: string | null
 }
 
 /** Lets a control outside this component (the topbar's small-screen "Preview"
@@ -31,7 +36,9 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
    * this component simply renders whenever the token moves.
    */
   renderAt: string
-}>(function PdfPreview({ document, renderAt }, ref) {
+  /** Which machine compiles it. Changing it re-renders what is on screen. */
+  mode: RenderMode
+}>(function PdfPreview({ document, renderAt, mode }, ref) {
   const [expanded, setExpanded] = useState(false)
   const close = useCallback(() => setExpanded(false), [])
   useImperativeHandle(ref, () => ({ expand: () => setExpanded(true) }), [])
@@ -40,6 +47,8 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
     pending: true,
     diagnostics: [],
     error: null,
+    renderedBy: null,
+    fellBackBecause: null,
   })
 
   // Read the document without making it an effect dependency — the token is
@@ -52,16 +61,22 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
     let cancelled = false
     setState((s) => ({ ...s, pending: true }))
 
-    api
-      .renderPdf(documentRef.current, controller.signal)
-      .then((blob) => {
+    renderPdf(documentRef.current, mode, controller.signal)
+      .then(({ blob, renderedBy, fellBackBecause }) => {
         if (cancelled) return
         const url = URL.createObjectURL(blob)
         setState((previous) => {
           // Swap first, then revoke: releasing the old URL before the iframe has
           // the new one makes the preview flash blank on every edit.
           if (previous.url) URL.revokeObjectURL(previous.url)
-          return { url, pending: false, diagnostics: [], error: null }
+          return {
+            url,
+            pending: false,
+            diagnostics: [],
+            error: null,
+            renderedBy,
+            fellBackBecause: fellBackBecause ?? null,
+          }
         })
       })
       .catch((error: unknown) => {
@@ -79,7 +94,7 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
       cancelled = true
       controller.abort()
     }
-  }, [renderAt])
+  }, [renderAt, mode])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -107,6 +122,15 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
       <div className="preview-status">
         {state.pending ? <span className="badge">Rendering…</span> : null}
         {state.error ? <span className="badge badge-error">{state.error}</span> : null}
+        {/* Only ever says something when the answer would surprise: that the
+            PDF was built here, or that it was asked for here and wasn't. */}
+        {state.fellBackBecause ? (
+          <span className="badge badge-notice" title={state.fellBackBecause}>
+            ☁ Rendered on the server
+          </span>
+        ) : state.renderedBy === 'browser' ? (
+          <span className="badge">⚡ Rendered here</span>
+        ) : null}
       </div>
 
       {state.diagnostics.length > 0 ? (

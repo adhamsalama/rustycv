@@ -1,6 +1,9 @@
 /target
 **/node_modules
 web/dist
+# Built by `just wasm`, from crates/rustycv-wasm. Tens of megabytes, and a
+# pure function of the tree — nothing here belongs in the history.
+web/public/wasm
 *.tsbuildinfo
 *.db
 *.db-shm

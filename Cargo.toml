@@ -4,6 +4,7 @@ members = [
     "crates/rustycv-core",
     "crates/rustycv-render",
     "crates/rustycv-server",
+    "crates/rustycv-wasm",
 ]
 
 [workspace.package]
@@ -15,7 +16,10 @@ license = "MIT"
 
 [workspace.dependencies]
 rustycv-core = { path = "crates/rustycv-core" }
-rustycv-render = { path = "crates/rustycv-render" }
+# `raster` off by default so the browser build does not have to remember to
+# turn it off; the render crate's own tests, which measure pixels, switch it
+# back on through its own defaults.
+rustycv-render = { path = "crates/rustycv-render", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -33,3 +37,19 @@ opt-level = 3
 
 [profile.dev.package.blake2]
 opt-level = 3
+
+# The browser build. Separate from `release` because the two want opposite
+# things: the server is optimised for a machine that already has the binary,
+# this one has to be downloaded first. `opt-level = "s"` is the trade that
+# matters — Typst is compute-bound, but a module nobody waits through is worth
+# more than one that lays out a page a few milliseconds sooner.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+strip = true
+# There is no unwinding on wasm32 anyway, and a panic here is not recoverable:
+# it leaves the module's memory in a state the next render would inherit, so
+# the editor throws the instance away and falls back to the server.
+panic = "abort"

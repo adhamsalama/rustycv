@@ -41,6 +41,39 @@ pub enum RenderError {
     Typst(Vec<Diagnostic>),
 }
 
+/// What a client is told when a render fails.
+///
+/// Both hosts answer with this shape — the server serialises it as the body of
+/// a 422, the browser build throws it as JSON — so a broken template reads the
+/// same whichever one compiled it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderFailure {
+    pub error: String,
+    /// Present only for a template compile failure, so the editor can say
+    /// *where* the render broke instead of showing an empty preview.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl From<&RenderError> for RenderFailure {
+    fn from(error: &RenderError) -> Self {
+        match error {
+            // `RenderError::Typst`'s own Display counts diagnostics, which is
+            // for a log line; the diagnostics themselves are right here, so
+            // what a reader wants above them is the plain fact.
+            RenderError::Typst(diagnostics) => Self {
+                error: "the template failed to compile".to_string(),
+                diagnostics: diagnostics.clone(),
+            },
+            other => Self {
+                error: other.to_string(),
+                diagnostics: vec![],
+            },
+        }
+    }
+}
+
 /// Evict Typst's memoization arena every this many renders.
 ///
 /// `comemo`'s cache is global and grows with each distinct compile. Under a
@@ -108,6 +141,7 @@ pub fn render_pdf(doc: &CvDocument) -> Result<Vec<u8>, RenderError> {
 /// Render each page to a PNG at the given resolution.
 ///
 /// Used for gallery thumbnails and for visual regression tests.
+#[cfg(feature = "raster")]
 pub fn render_pngs(doc: &CvDocument, ppi: f32) -> Result<Vec<Vec<u8>>, RenderError> {
     let (_world, document) = compile(doc)?;
     let options = typst_render::RenderOptions {

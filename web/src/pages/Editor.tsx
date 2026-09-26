@@ -7,11 +7,14 @@ import { SECTION_KINDS, SECTION_SPECS } from '../sections'
 import type { SectionKind } from '../types'
 import { sectionItems, visibleItems } from '../types'
 import { useDebounced } from '../hooks/useDebounced'
+import { useRenderMode } from '../renderer'
 import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { RendererToggle } from '../components/RendererToggle'
+import { DownloadPdf } from '../components/DownloadPdf'
 import { ShareControl } from '../components/ShareControl'
 import { SiteFooter } from '../components/SiteFooter'
 import { SortableList, SortableRow } from '../components/Sortable'
@@ -82,6 +85,9 @@ export function Editor() {
 
   const [pane, setPane] = usePane()
   const { state: saveState, renderAt } = useAutosave(id, revision)
+  // Held here rather than inside each control: the preview, the toggle and the
+  // download button have to be looking at the same answer.
+  const [renderMode, setRenderMode] = useRenderMode()
   // The outline becomes a slide-in drawer once it no longer fits beside the
   // pane; closed by default so a phone doesn't open on top of it.
   const [outlineOpen, setOutlineOpen] = useState(false)
@@ -136,15 +142,14 @@ export function Editor() {
         >
           Preview
         </button>
+        <RendererToggle mode={renderMode} onChange={setRenderMode} />
         <AppearanceToggle />
         {data ? <ShareControl cv={data} /> : null}
         <div className="editor-actions">
           <a className="ghost" href={api.exportUrl(id)}>
             Export JSON
           </a>
-          <a className="primary" href={api.pdfUrl(id)}>
-            Download PDF
-          </a>
+          <DownloadPdf id={id} document={document} title={title} mode={renderMode} />
         </div>
       </header>
 
@@ -229,7 +234,12 @@ export function Editor() {
         </main>
 
         <aside className="preview-pane">
-          <PdfPreview ref={previewRef} document={document} renderAt={renderAt} />
+          <PdfPreview
+            ref={previewRef}
+            document={document}
+            renderAt={renderAt}
+            mode={renderMode}
+          />
         </aside>
       </div>
 

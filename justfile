@@ -29,8 +29,39 @@ serve-bundled port=default_port:
     pnpm -C web build
     DATABASE_URL="{{db}}" PORT="{{port}}" cargo run --release -p rustycv-server --bin rustycv-server
 
+# Build the browser renderer into web/public/wasm/.
+#
+# Optional: without it the editor still works, the toggle reports that the
+# module is not there, and every render goes to the server. `pnpm build` copies
+# whatever is in public/ into dist/, so this has to run first to be shipped.
+wasm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The CLI has to match the crate exactly — a mismatch fails with a schema
+    # error that says nothing about versions.
+    wanted=$(awk '/^name = "wasm-bindgen"$/ {getline; gsub(/[",]/, "", $3); print $3; exit}' Cargo.lock)
+    have=$(wasm-bindgen --version 2>/dev/null | awk '{print $2}' || true)
+    if [ "$have" != "$wanted" ]; then
+        echo "wasm-bindgen $wanted is needed; found '${have:-nothing}' on PATH." >&2
+        echo "  rustup target add wasm32-unknown-unknown" >&2
+        echo "  cargo install wasm-bindgen-cli --version $wanted --locked" >&2
+        exit 1
+    fi
+    cargo build -p rustycv-wasm --target wasm32-unknown-unknown --profile wasm-release
+    wasm-bindgen --target web --no-typescript --out-dir web/public/wasm \
+        target/wasm32-unknown-unknown/wasm-release/rustycv_wasm.wasm
+    # Shaves a few megabytes off. Nice to have, not required — the module is
+    # correct either way.
+    if command -v wasm-opt >/dev/null; then
+        wasm-opt -Oz -o web/public/wasm/rustycv_wasm_bg.wasm web/public/wasm/rustycv_wasm_bg.wasm
+    else
+        echo "note: wasm-opt not on PATH — shipping the unoptimised module" >&2
+    fi
+    ls -lh web/public/wasm
+
 test:
     cargo test --workspace
+    pnpm -C web test
     pnpm -C web typecheck
 
 lint:

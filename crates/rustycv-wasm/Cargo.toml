@@ -1,0 +1,34 @@
+[package]
+name = "rustycv-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+# `cdylib` is what wasm-bindgen links; `rlib` keeps the crate buildable — and
+# testable — for the host, so the plumbing below has ordinary `cargo test`
+# coverage without a browser in the loop.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rustycv-core = { workspace = true }
+# No rasteriser: the browser wants a PDF, and `typst-render` would be dead
+# weight in a module that has to cross the wire. (That is the workspace
+# default; it is named here because it is the reason this crate is small.)
+rustycv-render = { workspace = true }
+serde_json = { workspace = true }
+
+wasm-bindgen = "0.2"
+
+# A document with an id-less entry gets one minted during deserialization, and
+# out here there is no OS to ask for the bytes. This turns on `uuid`'s
+# `crypto.getRandomValues` backend for the wasm build only — the server build
+# is untouched, and a `uuid` without it refuses to compile rather than handing
+# back predictable ids.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+uuid = { workspace = true, features = ["js"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

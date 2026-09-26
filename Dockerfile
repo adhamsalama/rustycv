@@ -1,7 +1,36 @@
 # syntax=docker/dockerfile:1
 
-# The editor. Built first and separately: it changes on its own schedule, and
-# nothing in the Rust build depends on it.
+# The browser renderer: the same Rust render path compiled to wasm, so the
+# editor can build a PDF without a round trip. First of the three stages,
+# because `pnpm build` ships whatever is sitting in web/public/ and this is
+# what puts it there.
+FROM rust:1.95-bookworm AS wasm
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+COPY templates templates
+COPY assets assets
+# The wasm-bindgen CLI has to match the `wasm-bindgen` crate exactly, so the
+# version is read out of the lockfile rather than pinned here — otherwise a
+# `cargo update` leaves the two disagreeing, and a mismatch fails with a schema
+# error that mentions no versions at all.
+RUN set -eux; \
+    version="$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[",]/, "", $3); print $3; exit }' Cargo.lock)"; \
+    case "$(uname -m)" in \
+      x86_64)  arch=x86_64 ;; \
+      aarch64) arch=aarch64 ;; \
+      *) echo "no wasm-bindgen release for $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    release="wasm-bindgen-${version}-${arch}-unknown-linux-musl"; \
+    curl -sSfL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${release}.tar.gz" \
+      | tar xz --strip-components=1 -C /usr/local/bin "${release}/wasm-bindgen"; \
+    rustup target add wasm32-unknown-unknown; \
+    cargo build -p rustycv-wasm --target wasm32-unknown-unknown --profile wasm-release; \
+    wasm-bindgen --target web --no-typescript --out-dir /wasm \
+      target/wasm32-unknown-unknown/wasm-release/rustycv_wasm.wasm
+
+# The editor. Built separately from the server: it changes on its own
+# schedule, and nothing in the Rust build depends on it.
 FROM node:22-bookworm-slim AS web
 WORKDIR /web
 RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
@@ -11,6 +40,9 @@ RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/.npmrc ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
+# Into public/, which Vite copies verbatim into dist/. A build without this
+# still works — the editor finds no module and every render goes to the server.
+COPY --from=wasm /wasm ./public/wasm
 RUN pnpm build
 
 # The server. Templates, fonts and icons are `include_str!`/`include_bytes!`d

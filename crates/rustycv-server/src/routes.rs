@@ -541,3 +541,28 @@ async fn delete_application(
     jobs::delete(&state.pool, user.id(), &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::slug;
+
+    /// The browser render path has no response to put a `Content-Disposition`
+    /// on, so it builds the same name itself in `pdfFilename` — see
+    /// `web/src/renderer.ts`. These cases and the ones in
+    /// `web/src/renderer.test.ts` are the same list, and are meant to be read
+    /// and changed together.
+    #[test]
+    fn the_download_name_matches_the_editors() {
+        assert_eq!(slug("Adham Salama", "Backend CV"), "adham-salama");
+        assert_eq!(slug("R&D Lead", "x"), "r-d-lead");
+        assert_eq!(slug("  Ada   Lovelace  ", "x"), "ada-lovelace");
+        // Unicode letters and digits survive; everything else is a separator.
+        assert_eq!(slug("José Ñuñez 3", "x"), "josé-ñuñez-3");
+
+        assert_eq!(slug("", "My Résumé"), "my-résumé");
+        assert_eq!(slug("   ", "My Résumé"), "my-résumé");
+        // A name with nothing alphanumeric in it leaves no slug to use.
+        assert_eq!(slug("!!!", "ignored"), "cv");
+        assert_eq!(slug("", ""), "cv");
+    }
+}

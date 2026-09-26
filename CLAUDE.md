@@ -13,6 +13,8 @@ Two corollaries that are load-bearing:
 
 - **Preview and download go through one render path** (`render_pdf`). The
   preview is exactly the output. Do not add a second, faster, approximate one.
+  Rendering in the browser is not one: it is that same function compiled to
+  wasm, and the fixture comes out to the same SHA-256 through both.
 - **The Typst `World` serves only memory** — the template, the icons, the CV.
   No filesystem, no packages. That is what makes running templates safe, so
   don't add a loader that reaches outside `CvWorld`.
@@ -23,6 +25,7 @@ Two corollaries that are load-bearing:
 crates/rustycv-core     the document model. Pure serde, no heavy deps.
 crates/rustycv-render   Typst World, templates, fonts, PDF/PNG export
 crates/rustycv-server   axum routes, sqlx storage, accounts, seed binary
+crates/rustycv-wasm     the same renderer, compiled for the browser
 templates/              .typ sources, embedded with include_str!
 assets/fonts, /icons    embedded with include_bytes!
 fixtures/adham.json     the reference resume `flowcv` reproduces
@@ -30,7 +33,8 @@ web/                    React editor
 ```
 
 Three crates so that editing a route does not recompile the Typst tree. Keep it
-that way: don't move rendering into the server crate.
+that way: don't move rendering into the server crate. The fourth is a shim, not
+a peer — see *The browser renderer*.
 
 **Templates and assets are compiled in.** Editing a `.typ` file and restarting
 the server is not enough — `cargo build -p rustycv-render` first, or you will
@@ -43,12 +47,14 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 110 tests
-pnpm -C web test                    # 55, the rich-text conversions
+cargo test --workspace              # 124 tests
+pnpm -C web test                    # 65, the rich-text conversions and the render switch
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 
 cargo test -p rustycv-render --test render   # writes target/render-out/*.pdf|png
+
+just wasm                           # the browser renderer → web/public/wasm/
 ```
 
 `just` wraps these. `just serve-bundled [port]` takes an optional port,
@@ -144,6 +150,61 @@ then fix it back.
 Two audit tests exist to catch whole classes of this:
 `every_theme_control_does_something_on_every_template` (dead controls) and
 `spacing_scales_with_type_size` (absolute units).
+
+## The browser renderer
+
+`crates/rustycv-wasm` is a shim — a `render_json` that parses and calls
+`rustycv_render::render_pdf`, and three `#[wasm_bindgen]` lines over it. It
+must stay that. The moment it grows a decision of its own it becomes the second
+render path the invariant forbids;
+`a_browser_render_is_the_same_bytes_as_a_server_render` is what notices.
+
+**It is optional at every level.** The module is gitignored, the editor builds
+and runs without one, and the render path falls back to the server rather than
+failing. Don't make anything depend on its being there.
+
+**Templates and fonts are compiled into it too.** So the rule about rebuilding
+`rustycv-render` after touching a `.typ` file or `assets/` applies twice: `just
+wasm` as well, or the browser keeps rendering the old template while the server
+renders the new one — which looks like the toggle changing the output, the one
+thing it must never do.
+
+`just wasm` writes into `web/public/wasm/`, which Vite copies verbatim into
+`dist/`, so it has to run **before** `pnpm -C web build`. Nothing imports it at
+build time: `renderWorker.ts` fetches `/wasm/rustycv_wasm.js` at runtime behind
+`/* @vite-ignore */`, which is what keeps a missing module a runtime fallback
+instead of a build error.
+
+The wasm-bindgen **CLI has to match the `wasm-bindgen` crate exactly**. A
+mismatch fails with a schema error naming no versions, so `just wasm` and the
+Dockerfile both read the wanted version out of `Cargo.lock` and refuse first.
+
+`uuid` needs its `js` feature on `wasm32-unknown-unknown` — a document with an
+id-less entry mints one while deserializing, and there is no OS to ask. It is a
+target-specific dependency of `rustycv-wasm` so the server build is untouched.
+`typst-render` goes the other way: `raster` is off in the workspace default and
+the render crate's own tests turn it back on, so the module carries the PDF
+exporter alone.
+
+**A failed local render is two different things and they want opposite
+answers.** The crate throws its failure body as JSON; anything else — a trap, a
+panic message — is the module falling over. A JSON body means the *document*
+does not compile, so it is shown, because the server would fail the same way
+after a round trip. Everything else falls back to the server, and a panic also
+discards the worker, since wasm memory after one is not something to render on
+top of. `classifyLocalFailure` in `web/src/renderer.ts` is that rule and
+`renderer.test.ts` pins it, including the case that nearly broke it: a panic
+message that happens to parse as JSON is still a panic.
+
+A *load* failure switches browser rendering off for the life of the page; a
+panic costs only the instance. The difference is whether the next attempt would
+differ.
+
+**A downloaded PDF's name is written twice.** The server puts it in
+`Content-Disposition`; a local render has no response to hang a header on, so
+`pdfFilename` in `web/src/renderer.ts` rebuilds it. It mirrors `slug` in
+`routes.rs`, and `the_download_name_matches_the_editors` and the matching
+`describe` in `renderer.test.ts` are the same case list on purpose.
 
 ## Editor appearance
 
