@@ -43,7 +43,7 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 59 tests
+cargo test --workspace              # 60 tests
 pnpm -C web test                    # 23, the rich-text conversions
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -80,9 +80,15 @@ not re-exported from `typst`. Diagnostic spans are `DiagSpan`, and hints are
 
 ## Templates
 
-`classic`, `modern` and `compact` share all their section rendering in
-`templates/common.typ` and differ only in page setup plus a `style` dict of
-typographic hooks. A fix to entry layout belongs there, once.
+`classic`, `modern`, `engineer`, `banner` and `compact` share all their section
+rendering in `templates/common.typ` and differ only in page setup plus a `style`
+dict of typographic hooks. A fix to entry layout belongs there, once — a new
+template that needs different *entry geometry* is the rare case, not the norm.
+
+`banner` is the only one that sets text **on** the accent, so it derives its ink
+from the accent's brightness rather than assuming a dark one; anything it draws
+on the paper instead uses the accent darkened back to a readable weight.
+`the_banner_band_picks_ink_that_survives_the_accent` pins both halves.
 
 `flowcv` carries its own entry geometry on purpose — its 55/45 title/date
 split, employer hairline and heading band are specific enough that reusing the

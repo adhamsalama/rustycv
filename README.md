@@ -17,7 +17,7 @@ picture of it.
 | **Frontend**  | React · Vite · TypeScript · TipTap for rich text                                                                                                                |
 | **Speed**     | ~5 ms for a warm render of a full CV in release (~26 ms in a debug build) — which is what makes the live preview feel instant                                   |
 
-Four built-in templates, including `flowcv` — a faithful reproduction of
+Six built-in templates, including `flowcv` — a faithful reproduction of
 FlowCV's default single-column layout, measured from a real published resume.
 
 Whole sections **and individual entries** can be hidden rather than deleted, so
@@ -180,7 +180,7 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 59 tests
+cargo test --workspace     # 60 tests
 pnpm -C web test           # 23 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
@@ -225,15 +225,21 @@ Typst dependency tree.
 
 ## Templates
 
-| id        | look                                                                                            |
-| --------- | ----------------------------------------------------------------------------------------------- |
-| `flowcv`  | Reproduction of FlowCV's default: centred header, tinted section bands, roles behind a hairline |
-| `classic` | Single column, generous whitespace, ATS-friendly _(default for new CVs)_                        |
-| `modern`  | Accent-coloured ruled headings, bolder name                                                     |
-| `compact` | Tighter type and spacing, for CVs spilling onto a second page                                   |
+| id         | look                                                                                            |
+| ---------- | ----------------------------------------------------------------------------------------------- |
+| `flowcv`   | Reproduction of FlowCV's default: centred header, tinted section bands, roles behind a hairline |
+| `classic`  | Single column, generous whitespace, ATS-friendly _(default for new CVs)_                        |
+| `modern`   | Accent-coloured ruled headings, bolder name                                                     |
+| `engineer` | Dense single column, headline and contact on one line, rules running out of each heading        |
+| `banner`   | Name and contact reversed out of a filled accent block, accent bars beside headings             |
+| `compact`  | Tighter type and spacing, for CVs spilling onto a second page                                   |
 
-`classic`, `modern` and `compact` share their section-rendering logic in
-`templates/common.typ` and differ only in page setup plus a `style` dict of
+`engineer` is the one aimed at software CVs: one column, no icons or graphics,
+nothing a keyword parser has to guess at, the headline and contact details on a
+single line, and a rhythm a notch tighter than `classic` at the same type size.
+
+Every template but `flowcv` shares its section-rendering logic in
+`templates/common.typ` and differs only in page setup plus a `style` dict of
 typographic hooks, so a fix to entry layout lands in all of them at once.
 `flowcv` carries its own entry geometry because its 55/45 split, hairline and
 heading band are specific enough that reusing the shared ones would distort

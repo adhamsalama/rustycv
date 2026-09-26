@@ -780,6 +780,74 @@ fn an_entry_heading_sits_one_line_step_above_its_first_bullet() {
     }
 }
 
+// --------------------------------------------------- banner header band
+
+/// The darkest and lightest pixel inside `banner`'s header band.
+///
+/// The band is the run of rows near the top that are inked right across the
+/// page. Sampling only the middle of them keeps the rounded corners and the
+/// white page margins out of the measurement, so what comes back is the fill
+/// and the text sitting on it, nothing else.
+fn band_extremes(accent: &str) -> (u8, u8) {
+    let mut doc: serde_json::Value = serde_json::from_str(FIXTURE).unwrap();
+    doc["template"] = json!("banner");
+    doc["theme"]["accent"] = json!(accent);
+    let png = render_page_one(&doc);
+    let img = image::load_from_memory(&png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+    let (x0, x1) = (width * 15 / 100, width * 85 / 100);
+
+    // "Mostly covered" rather than "entirely covered": the band's own text can
+    // be pure white, and demanding every pixel be non-white would drop exactly
+    // the rows this is trying to look at.
+    let covered = |y: u32| {
+        let filled = (x0..x1)
+            .filter(|&x| img.get_pixel(x, y).0[0] != 255)
+            .count();
+        filled * 10 >= (x1 - x0) as usize * 9
+    };
+    let rows: Vec<u32> = (0..height / 4).filter(|&y| covered(y)).collect();
+    assert!(
+        rows.len() > 20,
+        "expected a solid header band near the top, found {} row(s)",
+        rows.len()
+    );
+    // The band's first and last rows are antialiased against the white page, so
+    // they read far lighter than the fill. Leaving them in would let a band
+    // with no light ink on it at all still report a light pixel.
+    let rows = &rows[2..rows.len() - 2];
+
+    let (mut min, mut max) = (255u8, 0u8);
+    for &y in rows {
+        for x in x0..x1 {
+            let v = img.get_pixel(x, y).0[0];
+            min = min.min(v);
+            max = max.max(v);
+        }
+    }
+    (min, max)
+}
+
+#[test]
+fn the_banner_band_picks_ink_that_survives_the_accent() {
+    // `banner` is the one template that puts text *on* the accent, so the
+    // accent it is given decides whether that text is readable at all. A fixed
+    // white would vanish the moment someone picked a yellow.
+    let (fill, ink) = band_extremes("#1f2937");
+    assert!(
+        fill < 100 && ink > 240,
+        "a dark accent should carry near-white text: darkest {fill}, lightest {ink}"
+    );
+
+    let (ink, fill) = band_extremes("#f5c518");
+    assert!(
+        ink < 60 && fill > 150,
+        "a light accent should carry near-black text: darkest {ink}, lightest {fill}"
+    );
+}
+
 // --------------------------------------------------------- theme audit
 
 /// Render the fixture on `template` with one theme field overridden.

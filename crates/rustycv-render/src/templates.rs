@@ -138,6 +138,26 @@ pub const TEMPLATES: &[Template] = &[
         metrics: STANDARD,
     },
     Template {
+        id: "engineer",
+        name: "Engineer",
+        description: "Dense single column, ruled small-caps headings, no graphics — built to survive a parser.",
+        source: include_str!("../../../templates/engineer/main.typ"),
+        // Engineers' CVs are bullet-heavy, so this one is designed a little
+        // tighter than standard — full-size type, less air around it.
+        metrics: Metrics {
+            margin_mm: 14.0,
+            section_gap_mm: 4.5,
+            ..STANDARD
+        },
+    },
+    Template {
+        id: "banner",
+        name: "Banner",
+        description: "Name and contact reversed out of a filled accent block, with accent bars beside headings.",
+        source: include_str!("../../../templates/banner/main.typ"),
+        metrics: STANDARD,
+    },
+    Template {
         id: "compact",
         name: "Compact",
         description: "Tighter type and spacing, for CVs that spill onto a second page.",
