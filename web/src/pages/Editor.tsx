@@ -15,7 +15,13 @@ import { SortableList, SortableRow } from '../components/Sortable'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
 
-const AUTOSAVE_MS = 1000
+/**
+ * How long the editor must be idle before the document is worth a round trip.
+ *
+ * One delay now, not two: the save and the render are a single chain, so there
+ * is nothing left to tune them against each other.
+ */
+const EDIT_SETTLE_MS = 400
 
 export function Editor() {
   const { id = '' } = useParams()
@@ -36,7 +42,7 @@ export function Editor() {
   }, [data?.id])
 
   const [pane, setPane] = useState<Pane>({ kind: 'details' })
-  const saveState = useAutosave(id, revision)
+  const { state: saveState, renderAt } = useAutosave(id, revision)
 
   if (isLoading) return <main className="centered">Loading…</main>
   if (error) return <main className="centered">Could not load this CV.</main>
@@ -147,7 +153,7 @@ export function Editor() {
         </main>
 
         <aside className="preview-pane">
-          <PdfPreview document={document} revision={revision} />
+          <PdfPreview document={document} renderAt={renderAt} />
         </aside>
       </div>
     </div>
@@ -193,39 +199,64 @@ function AddSection({
 type SaveState = 'saved' | 'saving' | 'error'
 
 /**
- * Persist the document a second after the user stops typing.
+ * Persist the document once the editor settles, then let the preview render.
  *
- * Deliberately separate from the preview's debounce: a preview that lags the
- * save (or vice versa) is fine, but tying them together would mean choosing one
- * delay that is either too slow to feel live or too eager on the database.
+ * The write leads deliberately: the preview is the artefact people trust, so
+ * it must never be ahead of what the server holds. The returned `renderAt`
+ * token is that permission — it changes only after a save has come back, and
+ * the preview renders when it does.
+ *
+ * A *failed* save releases the token too. A preview frozen because the
+ * database is unhappy is worse than one showing work that isn't persisted yet,
+ * and the header already says the save failed.
  */
-function useAutosave(id: string, revision: number): SaveState {
-  const settled = useDebounced(revision, AUTOSAVE_MS)
+function useAutosave(id: string, revision: number): { state: SaveState; renderAt: string } {
+  const settled = useDebounced(revision, EDIT_SETTLE_MS)
   const [state, setState] = useState<SaveState>('saved')
-  const lastSaved = useRef(0)
+  const [renderedRevision, setRenderedRevision] = useState(0)
+  const lastAttempt = useRef(0)
+
+  // A different CV has been opened: nothing has been written for it yet, and
+  // its revisions count from zero again, so a stale high-water mark here would
+  // swallow its first save.
+  useEffect(() => {
+    lastAttempt.current = 0
+    setRenderedRevision(0)
+  }, [id])
 
   useEffect(() => {
-    // revision 0 is the freshly-loaded document — nothing to write back.
-    if (settled === 0 || settled === lastSaved.current) return
+    // revision 0 is the freshly-loaded document — nothing to write back. The
+    // preview still renders it, on the `${id}:0` token below.
+    if (settled === 0 || settled === lastAttempt.current) return
 
     const { id: storeId, document, title } = useCvStore.getState()
     if (!document || storeId !== id) return
 
+    lastAttempt.current = settled
     let cancelled = false
     setState('saving')
+
+    const release = () => setRenderedRevision(settled)
+
     api
       .saveCv(id, document, title)
       .then(() => {
         if (cancelled) return
-        lastSaved.current = settled
         setState('saved')
+        release()
       })
-      .catch(() => !cancelled && setState('error'))
+      .catch(() => {
+        if (cancelled) return
+        setState('error')
+        release()
+      })
 
     return () => {
       cancelled = true
     }
   }, [settled, id])
 
-  return state
+  // Keyed by CV as well as revision, so switching CVs re-renders even though
+  // the new document starts back at revision 0.
+  return { state, renderAt: `${id}:${renderedRevision}` }
 }

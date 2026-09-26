@@ -2,10 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import type { CvDocument, Diagnostic } from '../types'
-import { useDebounced } from '../hooks/useDebounced'
-
-/** How long the editor must be idle before a render is worth spending. */
-const DEBOUNCE_MS = 400
 
 interface PreviewState {
   url: string | null
@@ -14,10 +10,18 @@ interface PreviewState {
   error: string | null
 }
 
-export function PdfPreview({ document, revision }: { document: CvDocument; revision: number }) {
-  // Debounce the revision counter rather than the document: it is a number, so
-  // the effect below doesn't re-run on every structurally-equal re-render.
-  const settledRevision = useDebounced(revision, DEBOUNCE_MS)
+export function PdfPreview({
+  document,
+  renderAt,
+}: {
+  document: CvDocument
+  /**
+   * Permission to render, from the autosave: a token that changes once the
+   * edit has been written back. Debouncing and ordering both happen there, so
+   * this component simply renders whenever the token moves.
+   */
+  renderAt: string
+}) {
   const [expanded, setExpanded] = useState(false)
   const close = useCallback(() => setExpanded(false), [])
   const [state, setState] = useState<PreviewState>({
@@ -27,8 +31,8 @@ export function PdfPreview({ document, revision }: { document: CvDocument; revis
     error: null,
   })
 
-  // Read the document without making it an effect dependency — the revision is
-  // what says the content changed.
+  // Read the document without making it an effect dependency — the token is
+  // what says a saved change is ready to render.
   const documentRef = useRef(document)
   documentRef.current = document
 
@@ -64,7 +68,7 @@ export function PdfPreview({ document, revision }: { document: CvDocument; revis
       cancelled = true
       controller.abort()
     }
-  }, [settledRevision])
+  }, [renderAt])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
