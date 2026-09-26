@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
@@ -21,6 +22,14 @@ export function Share() {
     enabled: Boolean(publicId),
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 1,
   })
+
+  useEffect(() => {
+    const name = data?.fullName || data?.title
+    document.title = name ? `${name} — Online Resume` : 'Online Resume'
+    return () => {
+      document.title = 'RustyCV'
+    }
+  }, [data?.fullName, data?.title])
 
   if (isLoading) return <main className="centered">Loading…</main>
 
