@@ -1,4 +1,4 @@
-use rustycv_core::{CvDocument, PageSize, SectionKind};
+use rustycv_core::{CvDocument, PageSize, Section, SectionKind};
 
 const FIXTURE: &str = include_str!("../../../fixtures/adham.json");
 
@@ -94,7 +94,14 @@ fn theme_clamps_hostile_input() {
 
 #[test]
 fn empty_and_hidden_sections_are_not_rendered() {
-    let mut doc = CvDocument::starter(); // three empty sections
+    let mut doc = CvDocument {
+        sections: vec![
+            Section::new(SectionKind::Experience),
+            Section::new(SectionKind::Education),
+            Section::new(SectionKind::Skills),
+        ],
+        ..Default::default()
+    };
     assert_eq!(doc.visible_sections().count(), 0, "empty sections skipped");
 
     doc.sections[0].body =

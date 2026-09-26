@@ -58,13 +58,117 @@ impl Default for CvDocument {
 }
 
 impl CvDocument {
-    /// A new, empty CV with one of each core section, ready to fill in.
+    /// A new CV with one of each core section, filled with placeholder
+    /// content so a first-time user sees what a finished CV looks like
+    /// instead of a blank page, and edits the sample rather than starting
+    /// from nothing.
     pub fn starter() -> Self {
         Self {
+            basics: Basics {
+                full_name: "Jordan Rivera".to_string(),
+                headline: "Senior Software Engineer".to_string(),
+                email: "jordan.rivera@example.com".to_string(),
+                phone: "+1 555 123 4567".to_string(),
+                location: "Austin, TX".to_string(),
+                links: vec![
+                    Link {
+                        id: Uuid::new_v4(),
+                        label: "GitHub".to_string(),
+                        url: "https://github.com/jordanrivera".to_string(),
+                    },
+                    Link {
+                        id: Uuid::new_v4(),
+                        label: "LinkedIn".to_string(),
+                        url: "https://linkedin.com/in/jordanrivera".to_string(),
+                    },
+                ],
+                summary: "Backend-leaning engineer who enjoys turning ambiguous \
+                    problems into reliable, well-tested systems. Comfortable owning \
+                    a service end to end, from design through on-call."
+                    .into(),
+            },
             sections: vec![
-                Section::new(SectionKind::Experience),
-                Section::new(SectionKind::Education),
-                Section::new(SectionKind::Skills),
+                Section {
+                    id: Uuid::new_v4(),
+                    title: SectionKind::Experience.default_title().to_string(),
+                    visible: true,
+                    body: SectionBody::Experience {
+                        items: vec![ExperienceItem {
+                            role: "Software Engineer".to_string(),
+                            company: "Acme Corp".to_string(),
+                            location: "Austin, TX".to_string(),
+                            start: Some(DateSpec::new(2022, 6)),
+                            current: true,
+                            bullets: RichText::from_blocks(vec![
+                                Block::new(
+                                    BlockKind::Bullet,
+                                    vec![Run::plain(
+                                        "Designed and shipped a service handling \
+                                        2M+ requests a day, cutting p99 latency by 35%.",
+                                    )],
+                                ),
+                                Block::new(
+                                    BlockKind::Bullet,
+                                    vec![Run::plain(
+                                        "Led the migration to a new queueing system, \
+                                        reducing failed job retries by half.",
+                                    )],
+                                ),
+                                Block::new(
+                                    BlockKind::Bullet,
+                                    vec![Run::plain(
+                                        "Mentored two junior engineers and ran the \
+                                        team's weekly code review sessions.",
+                                    )],
+                                ),
+                            ]),
+                            ..Default::default()
+                        }],
+                        order: EntryOrder::default(),
+                        group_promotions: true,
+                    },
+                },
+                Section {
+                    id: Uuid::new_v4(),
+                    title: SectionKind::Education.default_title().to_string(),
+                    visible: true,
+                    body: SectionBody::Education {
+                        items: vec![EducationItem {
+                            degree: "B.S. in Computer Science".to_string(),
+                            institution: "University of Texas at Austin".to_string(),
+                            start: Some(DateSpec::year_only(2016)),
+                            end: Some(DateSpec::year_only(2020)),
+                            ..Default::default()
+                        }],
+                    },
+                },
+                Section {
+                    id: Uuid::new_v4(),
+                    title: SectionKind::Skills.default_title().to_string(),
+                    visible: true,
+                    body: SectionBody::Skills {
+                        groups: vec![
+                            SkillGroup {
+                                name: "Languages".to_string(),
+                                items: vec![
+                                    "Rust".to_string(),
+                                    "Go".to_string(),
+                                    "TypeScript".to_string(),
+                                ],
+                                ..Default::default()
+                            },
+                            SkillGroup {
+                                name: "Tools".to_string(),
+                                items: vec![
+                                    "PostgreSQL".to_string(),
+                                    "Docker".to_string(),
+                                    "AWS".to_string(),
+                                ],
+                                ..Default::default()
+                            },
+                        ],
+                    },
+                },
             ],
             ..Default::default()
         }

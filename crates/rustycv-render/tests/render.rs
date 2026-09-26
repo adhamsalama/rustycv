@@ -38,12 +38,27 @@ fn every_template_renders_the_fixture() {
 
 #[test]
 fn every_template_survives_an_empty_document() {
-    // A brand new CV renders before the user has typed anything.
+    // Before `starter()` filled in a document, deleting everything.
+    for template in TEMPLATES {
+        let doc = CvDocument {
+            template: template.id.to_string(),
+            ..Default::default()
+        };
+        let pdf = render_pdf(&doc)
+            .unwrap_or_else(|e| panic!("template `{}` failed on empty: {e:#?}", template.id));
+        assert!(pdf.starts_with(b"%PDF"));
+    }
+}
+
+#[test]
+fn every_template_renders_the_starter_document() {
+    // A brand new CV, with its placeholder content, before the user has typed
+    // anything of their own.
     for template in TEMPLATES {
         let mut doc = CvDocument::starter();
         doc.template = template.id.to_string();
         let pdf = render_pdf(&doc)
-            .unwrap_or_else(|e| panic!("template `{}` failed on empty: {e:#?}", template.id));
+            .unwrap_or_else(|e| panic!("template `{}` failed on starter doc: {e:#?}", template.id));
         assert!(pdf.starts_with(b"%PDF"));
     }
 }
