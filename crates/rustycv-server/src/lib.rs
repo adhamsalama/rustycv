@@ -67,7 +67,19 @@ pub fn app_with_state(state: AppState) -> Router {
     let web_dist = web_dist_dir();
     if web_dist.is_dir() {
         let index = web_dist.join("index.html");
-        app = app.fallback_service(ServeDir::new(&web_dist).fallback(ServeFile::new(index)));
+        app = app.fallback_service(
+            ServeDir::new(&web_dist)
+                // Serve `foo.br` / `foo.gz` when the caller takes them and the
+                // build left them there. *Pre*-compressed rather than a
+                // `CompressionLayer`, because the largest thing here by two
+                // orders of magnitude is the browser renderer — compressing
+                // thirty megabytes per request would cost more CPU than the
+                // renders it exists to save. Built once by `just wasm`, and by
+                // the Docker image for the rest of `dist` as well.
+                .precompressed_br()
+                .precompressed_gzip()
+                .fallback(ServeFile::new(index)),
+        );
     }
 
     app

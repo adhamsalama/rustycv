@@ -44,6 +44,17 @@ COPY web/ ./
 # still works — the editor finds no module and every render goes to the server.
 COPY --from=wasm /wasm ./public/wasm
 RUN pnpm build
+# Compress what the server will serve, once, here. `ServeDir` is configured to
+# send these (`precompressed_br`/`precompressed_gzip`) rather than compress per
+# request — which for a thirty-megabyte wasm module would cost the server more
+# CPU than the renders that module exists to take off it. `just wasm` does the
+# same for a local build, which only covers the module itself.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends brotli \
+ && rm -rf /var/lib/apt/lists/* \
+ && find dist -type f \( -name '*.wasm' -o -name '*.js' -o -name '*.css' \
+      -o -name '*.html' -o -name '*.json' -o -name '*.svg' \) \
+      -exec gzip -9 -k -f {} \; -exec brotli -q 11 -f {} \;
 
 # The server. Templates, fonts and icons are `include_str!`/`include_bytes!`d
 # into the binary, so they have to be here at build time even though nothing

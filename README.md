@@ -251,8 +251,16 @@ same SHA-256 through both, so the flag picks a machine and never an output.
 
 What `browser` buys is the round trip. After the module has loaded, re-rendering
 the fixture takes single-digit milliseconds, because Typst's incremental cache
-is sitting in the tab. What it costs is that module: about 30 MB, 9 MB over a
-Brotli-compressed connection, fetched once and then in the HTTP cache.
+is sitting in the tab. What it costs is that module: 30 MB on disk but **7.5 MB
+over the wire** (11 MB to a browser that only takes gzip), fetched once and then
+in the HTTP cache.
+
+It is compressed at build time, not per request — `just wasm` writes
+`.wasm.br` and `.wasm.gz` beside it and the server sends whichever the browser
+asked for. Brotli-compressing 30 MB on demand would cost the server more CPU
+than the renders the module exists to take off it. The Docker image does the
+same for the rest of `dist`, which takes the editor's own bundle from 806 kB to
+217 kB.
 
 The module is **optional at every level**. It is not checked in, the editor
 builds and runs without it, and an editor that cannot load one says so on the

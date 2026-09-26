@@ -43,6 +43,12 @@ _wasm-note:
     if [ ! -f "$module" ]; then
         echo "note: no browser renderer built — every render will fall back to the server." >&2
         echo "      \`just wasm\` builds one; RUSTYCV_RENDER=server says you meant it." >&2
+    elif [ -f "$module.gz" ] && [ "$module" -nt "$module.gz" ]; then
+        # `ServeDir` prefers the compressed copy, so a stale one is served to
+        # every browser that accepts it while a bare `curl` gets the new module
+        # — a divergence that shows up nowhere until someone compares them.
+        echo "note: the compressed copies of the browser renderer are older than the module." >&2
+        echo "      \`just wasm\` rewrites them; until then browsers get the old one." >&2
     elif [ -n "$(find templates assets crates/rustycv-core/src crates/rustycv-render/src -newer "$module" -type f -print -quit)" ]; then
         # Templates, icons and fonts are compiled into the module the same way
         # they are compiled into the server, so the same staleness trap applies
@@ -77,6 +83,19 @@ wasm:
         wasm-opt -Oz -o web/public/wasm/rustycv_wasm_bg.wasm web/public/wasm/rustycv_wasm_bg.wasm
     else
         echo "note: wasm-opt not on PATH — shipping the unoptimised module" >&2
+    fi
+    # Compress it here rather than per request. `ServeDir` picks these up
+    # (`precompressed_br`/`precompressed_gzip`) and sends whichever the browser
+    # asked for; compressing thirty megabytes on the fly would cost the server
+    # more than the renders this module exists to take off it.
+    for f in web/public/wasm/rustycv_wasm_bg.wasm web/public/wasm/rustycv_wasm.js; do
+        gzip -9 -k -f "$f"
+        if command -v brotli >/dev/null; then
+            brotli -q 11 -f -o "$f.br" "$f"
+        fi
+    done
+    if ! command -v brotli >/dev/null; then
+        echo "note: brotli not on PATH — gzip only, about 30% larger over the wire" >&2
     fi
     ls -lh web/public/wasm
 

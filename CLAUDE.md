@@ -193,6 +193,21 @@ build time: `renderWorker.ts` fetches `/wasm/rustycv_wasm.js` at runtime behind
 `/* @vite-ignore */`, which is what keeps a missing module a runtime fallback
 instead of a build error.
 
+**The module is compressed at build time, never per request.** `just wasm`
+writes `.wasm.br` and `.wasm.gz` beside it and `ServeDir` is built with
+`precompressed_br`/`precompressed_gzip`, so the server sends a file rather than
+running brotli over 30MB on every cold load — which would cost it more than the
+renders the module exists to take off it. A `CompressionLayer` is the wrong
+tool here for exactly that reason. Numbers: 31.7MB raw, 11.7MB gzip, 7.9MB
+brotli, and the content type survives (`application/wasm`, which
+`instantiateStreaming` requires).
+
+Which means **the compressed copies can go stale**. `ServeDir` prefers them, so
+an out-of-date `.br` is served to every browser that accepts one while a bare
+`curl` gets the new module — a divergence with no symptom until someone
+compares the two. `just wasm` always rewrites both, and `_wasm-note` checks
+their mtimes.
+
 The wasm-bindgen **CLI has to match the `wasm-bindgen` crate exactly**. A
 mismatch fails with a schema error naming no versions, so `just wasm` and the
 Dockerfile both read the wanted version out of `Cargo.lock` and refuse first.
