@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api } from '../api'
-import { pdfFilename, renderPdf, type RenderMode } from '../renderer'
-import type { CvDocument } from '../types'
+import { pdfFilename, renderPdf } from '../renderer'
+import type { CvDocument, RenderMode } from '../types'
 
 /**
  * Save the CV as a PDF.

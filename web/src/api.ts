@@ -1,4 +1,5 @@
 import type {
+  AppConfig,
   Application,
   ApplicationInput,
   ApplicationStatus,
@@ -64,6 +65,8 @@ export const api = {
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
 
+  /** How this instance is set up. Fixed for the life of the server process. */
+  config: () => request<AppConfig>('/config'),
   templates: () => request<TemplateInfo[]>('/templates'),
   fonts: () => request<string[]>('/fonts'),
 

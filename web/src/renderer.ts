@@ -1,52 +1,20 @@
-import { useCallback, useState } from 'react'
 import { api, ApiError } from './api'
-import type { CvDocument, Diagnostic } from './types'
+import type { CvDocument, Diagnostic, RenderMode } from './types'
 
 /**
- * Where a PDF is compiled.
+ * Compiling a CV to a PDF, on whichever machine `/api/config` named.
  *
  * The same Rust renderer either way — `crates/rustycv-wasm` is a shim over the
  * very function the server calls, over the same embedded templates and fonts —
- * so this chooses a machine, never an output. The two agree byte for byte, and
- * `a_browser_render_is_the_same_bytes_as_a_server_render` is what keeps them
- * agreeing.
+ * so the mode chooses a machine, never an output. The two agree byte for byte,
+ * and `a_browser_render_is_the_same_bytes_as_a_server_render` is what keeps
+ * them agreeing.
  *
- * 'server' stays the default: the wasm module is a multi-megabyte download,
- * and someone who opens the editor to fix a date should not pay for it.
+ * Nothing is stored here and there is no way for a user to override the mode.
+ * The fallbacks below are the one exception, and they only ever move work
+ * *back* to the server — never the other way, which would mean rendering
+ * somewhere the operator ruled out.
  */
-export type RenderMode = 'server' | 'browser'
-
-export const RENDERER_KEY = 'rustycv:renderer'
-
-/** Anything unrecognised — or nothing stored — means render on the server. */
-export function parseRenderMode(stored: string | null): RenderMode {
-  return stored === 'browser' ? 'browser' : 'server'
-}
-
-export function useRenderMode(): [RenderMode, (next: RenderMode) => void] {
-  const [mode, setMode] = useState<RenderMode>(() => {
-    try {
-      return parseRenderMode(localStorage.getItem(RENDERER_KEY))
-    } catch {
-      // Private mode, or storage disabled. The server can still render.
-      return 'server'
-    }
-  })
-
-  const choose = useCallback((next: RenderMode) => {
-    setMode(next)
-    try {
-      if (next === 'server') localStorage.removeItem(RENDERER_KEY)
-      else localStorage.setItem(RENDERER_KEY, next)
-    } catch {
-      // The choice still applies for this session.
-    }
-  }, [])
-
-  return [mode, choose]
-}
-
-// --------------------------------------------------------------- rendering
 
 export interface RenderOutcome {
   blob: Blob

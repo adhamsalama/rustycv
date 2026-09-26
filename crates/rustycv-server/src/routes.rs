@@ -12,7 +12,7 @@ use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, Application, ApplicationInput, Status};
 use crate::middleware::{require_auth, CurrentUser, PeerAddr, SessionToken};
-use crate::state::AppState;
+use crate::state::{AppState, RenderMode};
 
 pub fn router() -> Router<AppState> {
     // Signing up and signing in are the only things that can be done without
@@ -33,6 +33,7 @@ pub fn router() -> Router<AppState> {
         .route("/public/cvs/{public_id}/pdf", get(download_published_pdf));
 
     let protected = Router::new()
+        .route("/config", get(app_config))
         .route("/templates", get(list_templates))
         .route("/fonts", get(list_fonts))
         .route("/render", post(render_preview))
@@ -156,6 +157,23 @@ async fn list_templates() -> Json<Vec<TemplateInfo>> {
             })
             .collect(),
     )
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppConfig {
+    render_mode: RenderMode,
+}
+
+/// What the editor has to be told about how this instance is set up.
+///
+/// Only one thing so far, and it is fixed for the life of the process — the
+/// editor reads it once on arrival and caches it, the way it does the template
+/// and font lists beside it.
+async fn app_config(State(state): State<AppState>) -> Json<AppConfig> {
+    Json(AppConfig {
+        render_mode: state.render_mode,
+    })
 }
 
 /// The font families the renderer actually has faces for. The theme picker

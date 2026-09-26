@@ -129,6 +129,7 @@ All optional.
 | `PORT`             | `8080`                                | API/server port.                                               |
 | `HOST`             | `127.0.0.1`                           | Bind address. Loopback on purpose — the session cookie is not sent over TLS. The Docker image sets `0.0.0.0`. |
 | `RUSTYCV_WEB_DIST` | `web/dist`                            | Where the built frontend lives.                                |
+| `RUSTYCV_RENDER`   | `browser`                             | Where PDFs are compiled: `browser` or `server`. See below. Anything else refuses to start. |
 | `RUST_LOG`         | `rustycv_server=info,tower_http=warn` | Standard `tracing` filter.                                     |
 | `RUSTYCV_API`      | `http://127.0.0.1:8080`               | Vite dev-server proxy target (frontend only).                  |
 | `SEED_EMAIL`       | `dev@rustycv.local`                   | Account the `seed` binary writes into, creating it if needed.  |
@@ -228,30 +229,44 @@ pushes to whatever `IMAGE` names at the top of the file.
 
 ## Rendering in the browser
 
-The editor can compile PDFs locally instead of asking the server for one. The
-⚡/☁ button in the editor's toolbar switches between the two, and the choice is
-remembered per browser.
+By default the editor compiles PDFs in the tab, not on the server — the live
+preview and the download both. `RUSTYCV_RENDER=server` moves that back to the
+server:
 
-It is the **same renderer** either way: `crates/rustycv-wasm` is a shim over
-the very `render_pdf` the server calls, compiled to `wasm32-unknown-unknown`
-with the same templates, icons and fonts embedded in it. The two produce
-identical bytes — the fixture renders to the same SHA-256 through both — so
-this chooses a machine, never an output.
+```sh
+RUSTYCV_RENDER=server cargo run -p rustycv-server
+```
 
-What it buys is the round trip. After the module has loaded, a re-render of the
-fixture takes single-digit milliseconds, because Typst's incremental cache is
-sitting in the tab. What it costs is that module: about 30 MB, 9 MB over a
-Brotli-compressed connection, fetched once and then in the HTTP cache. That is
-why the server stays the default.
+It is a **startup flag, not a user setting**. Whoever runs the instance decides
+once; the editor reads `/api/config` on arrival and has no way to override it.
+A value that is neither `browser` nor `server` refuses to start rather than
+falling back, because a mode that was quietly ignored looks exactly like one
+that was applied.
+
+The two are the **same renderer**: `crates/rustycv-wasm` is a shim over the
+very `render_pdf` the server calls, compiled to `wasm32-unknown-unknown` with
+the same templates, icons and fonts embedded in it. The fixture renders to the
+same SHA-256 through both, so the flag picks a machine and never an output.
+
+What `browser` buys is the round trip. After the module has loaded, re-rendering
+the fixture takes single-digit milliseconds, because Typst's incremental cache
+is sitting in the tab. What it costs is that module: about 30 MB, 9 MB over a
+Brotli-compressed connection, fetched once and then in the HTTP cache.
 
 The module is **optional at every level**. It is not checked in, the editor
 builds and runs without it, and an editor that cannot load one says so on the
-preview and goes back to the server. Same for a render that fails in a way the
-server might not hit — a module cached from before a new template shipped, or a
-panic — while a template that genuinely does not compile is shown as the
-compile error it is, because the server would only fail the same way slower.
+preview and goes back to the server — which is why `browser` is safe as the
+default even on an instance nobody built one for. Same for a render that fails
+in a way the server might not: a module cached from before a new template
+shipped, or a panic. A template that genuinely does not compile is shown as the
+compile error it is, because the server would only reach the same answer slower.
 
-To build it:
+Share links are always rendered on the server (and cached), whatever this is
+set to. A visitor holding a link is only ever sent the PDF, never the CV's
+structured data, and would be downloading the whole module to render one page
+once.
+
+To build the module:
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -268,11 +283,13 @@ Vite copies `web/public/` verbatim into `web/dist/`, so the wasm has to be
 built *before* `pnpm -C web build` to be served. The Docker image does this in
 its own stage, so a published image always has it.
 
+---
+
 ## Tests
 
 ```sh
-cargo test --workspace     # 124 tests
-pnpm -C web test           # 65 tests, the rich-text conversions and the renderer switch
+cargo test --workspace     # 128 tests
+pnpm -C web test           # 64 tests, the rich-text conversions and the render fallback
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check

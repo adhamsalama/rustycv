@@ -7,13 +7,11 @@ import { SECTION_KINDS, SECTION_SPECS } from '../sections'
 import type { SectionKind } from '../types'
 import { sectionItems, visibleItems } from '../types'
 import { useDebounced } from '../hooks/useDebounced'
-import { useRenderMode } from '../renderer'
 import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { AppearanceToggle } from '../components/AppearanceToggle'
-import { RendererToggle } from '../components/RendererToggle'
 import { DownloadPdf } from '../components/DownloadPdf'
 import { ShareControl } from '../components/ShareControl'
 import { SiteFooter } from '../components/SiteFooter'
@@ -76,6 +74,16 @@ export function Editor() {
     enabled: Boolean(id),
   })
 
+  // Where this instance renders. Decided by whoever started the server and
+  // fixed for the life of its process, so it is read once and never refetched
+  // — and the editor waits for it below rather than guessing, because guessing
+  // wrong means a first render on the machine the operator ruled out.
+  const { data: config } = useQuery({
+    queryKey: ['config'],
+    queryFn: api.config,
+    staleTime: Infinity,
+  })
+
   useEffect(() => {
     if (data) store.load(data.id, data.title, data.document)
     return () => store.reset()
@@ -85,9 +93,6 @@ export function Editor() {
 
   const [pane, setPane] = usePane()
   const { state: saveState, renderAt } = useAutosave(id, revision)
-  // Held here rather than inside each control: the preview, the toggle and the
-  // download button have to be looking at the same answer.
-  const [renderMode, setRenderMode] = useRenderMode()
   // The outline becomes a slide-in drawer once it no longer fits beside the
   // pane; closed by default so a phone doesn't open on top of it.
   const [outlineOpen, setOutlineOpen] = useState(false)
@@ -95,7 +100,7 @@ export function Editor() {
 
   if (isLoading) return <main className="centered">Loading…</main>
   if (error) return <main className="centered">Could not load this CV.</main>
-  if (!document) return <main className="centered">Loading…</main>
+  if (!document || !config) return <main className="centered">Loading…</main>
 
   const activeSection =
     pane.kind === 'section' ? document.sections.find((s) => s.id === pane.id) : undefined
@@ -142,14 +147,13 @@ export function Editor() {
         >
           Preview
         </button>
-        <RendererToggle mode={renderMode} onChange={setRenderMode} />
         <AppearanceToggle />
         {data ? <ShareControl cv={data} /> : null}
         <div className="editor-actions">
           <a className="ghost" href={api.exportUrl(id)}>
             Export JSON
           </a>
-          <DownloadPdf id={id} document={document} title={title} mode={renderMode} />
+          <DownloadPdf id={id} document={document} title={title} mode={config.renderMode} />
         </div>
       </header>
 
@@ -238,7 +242,7 @@ export function Editor() {
             ref={previewRef}
             document={document}
             renderAt={renderAt}
-            mode={renderMode}
+            mode={config.renderMode}
           />
         </aside>
       </div>

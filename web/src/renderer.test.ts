@@ -1,15 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyLocalFailure, parseRenderMode, pdfFilename } from './renderer'
-
-describe('the renderer preference', () => {
-  it('renders on the server for anything it does not recognise', () => {
-    expect(parseRenderMode(null)).toBe('server')
-    expect(parseRenderMode('')).toBe('server')
-    // A value left by an older build, or edited by hand.
-    expect(parseRenderMode('gpu')).toBe('server')
-    expect(parseRenderMode('browser')).toBe('browser')
-  })
-})
+import { classifyLocalFailure, pdfFilename } from './renderer'
 
 /**
  * The distinction the fallback turns on. A document that will not compile

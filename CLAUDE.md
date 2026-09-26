@@ -47,8 +47,8 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 124 tests
-pnpm -C web test                    # 65, the rich-text conversions and the render switch
+cargo test --workspace              # 128 tests
+pnpm -C web test                    # 64, the rich-text conversions and the render fallback
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 
@@ -153,20 +153,35 @@ Two audit tests exist to catch whole classes of this:
 
 ## The browser renderer
 
+**`RUSTYCV_RENDER` is an operator's flag, not a user's setting.** `browser`
+(the default) or `server`, read once in `main.rs`, served to the editor over
+`/api/config`, and not overridable from the client — there is no stored
+preference and nothing in the UI. An unrecognised value **refuses to start**
+rather than defaulting; that is deliberate, and it is the `PORT` trap above
+written the other way round, because a mode that was quietly ignored looks
+exactly like one that was applied. `build_app` takes it as an argument rather
+than reading the environment itself, so a test's router does not depend on the
+shell that ran it.
+
+The editor **waits for `/api/config`** before its first render (`Editor.tsx`
+gates on it alongside the document). Guessing and correcting would mean one
+render on the machine the operator ruled out.
+
 `crates/rustycv-wasm` is a shim — a `render_json` that parses and calls
 `rustycv_render::render_pdf`, and three `#[wasm_bindgen]` lines over it. It
 must stay that. The moment it grows a decision of its own it becomes the second
 render path the invariant forbids;
 `a_browser_render_is_the_same_bytes_as_a_server_render` is what notices.
 
-**It is optional at every level.** The module is gitignored, the editor builds
+**The module is optional at every level.** It is gitignored, the editor builds
 and runs without one, and the render path falls back to the server rather than
-failing. Don't make anything depend on its being there.
+failing — which is what makes `browser` safe as the default on an instance
+nobody built one for. Don't make anything depend on its being there.
 
 **Templates and fonts are compiled into it too.** So the rule about rebuilding
 `rustycv-render` after touching a `.typ` file or `assets/` applies twice: `just
 wasm` as well, or the browser keeps rendering the old template while the server
-renders the new one — which looks like the toggle changing the output, the one
+renders the new one — which looks like the flag changing the output, the one
 thing it must never do.
 
 `just wasm` writes into `web/public/wasm/`, which Vite copies verbatim into
@@ -198,13 +213,24 @@ message that happens to parse as JSON is still a panic.
 
 A *load* failure switches browser rendering off for the life of the page; a
 panic costs only the instance. The difference is whether the next attempt would
-differ.
+differ. Both fall back **towards** the server and never away from it — the flag
+is a ceiling on where work may happen, not a hint.
+
+The preview says nothing when a render happened where it was configured to.
+The "Rendered on the server" badge appears only on a fallback, because that is
+the only visible sign a module is missing or broken.
 
 **A downloaded PDF's name is written twice.** The server puts it in
 `Content-Disposition`; a local render has no response to hang a header on, so
 `pdfFilename` in `web/src/renderer.ts` rebuilds it. It mirrors `slug` in
 `routes.rs`, and `the_download_name_matches_the_editors` and the matching
 `describe` in `renderer.test.ts` are the same case list on purpose.
+
+**Share links always render on the server**, whatever the flag says
+(`download_published_pdf`, which also caches against `updated_at`). A visitor
+is sent the PDF and never the document, so there is nothing in the page to
+render from — and rendering locally would trade a cache hit for a 30 MB
+download and a cold compile.
 
 ## Editor appearance
 

@@ -15,9 +15,12 @@ use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
-use state::AppState;
+use state::{AppState, RenderMode};
 
-pub async fn build_app(database_url: &str) -> anyhow::Result<Router> {
+/// `render_mode` is passed in rather than read from the environment here, so
+/// that a test builds a router whose behaviour does not depend on what is set
+/// in the shell that ran it. `main` is where the variable is read.
+pub async fn build_app(database_url: &str, render_mode: RenderMode) -> anyhow::Result<Router> {
     let pool = db::connect(database_url).await?;
     let state = AppState {
         pool,
@@ -25,6 +28,7 @@ pub async fn build_app(database_url: &str) -> anyhow::Result<Router> {
         limiter: ratelimit::RateLimiter::new(),
         public_ip_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_IP_MAX_REQUESTS),
         public_cv_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_CV_MAX_REQUESTS),
+        render_mode,
     };
     Ok(app_with_state(state))
 }

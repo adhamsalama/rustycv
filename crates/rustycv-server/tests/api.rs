@@ -37,9 +37,12 @@ impl TestApp {
     /// happens without a session.
     async fn signed_out() -> Self {
         let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
-        let router = rustycv_server::build_app(&format!("sqlite://{}", path.display()))
-            .await
-            .expect("app builds");
+        let router = rustycv_server::build_app(
+            &format!("sqlite://{}", path.display()),
+            rustycv_server::state::RenderMode::default(),
+        )
+        .await
+        .expect("app builds");
         Self {
             router,
             path,
@@ -542,6 +545,40 @@ async fn deleting_a_card_removes_it_from_the_board() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// The editor has no say in where it renders, so the only way it can find out
+/// is to be told. An instance that answered the wrong thing here would send
+/// every render to the wrong machine and look, from the outside, like the
+/// setting being ignored.
+#[tokio::test]
+async fn the_editor_is_told_where_this_instance_renders() {
+    let app = TestApp::new().await;
+
+    let (status, config) = app.json("GET", "/api/config", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    // What `build_app` was handed in `signed_out`, which is the default.
+    assert_eq!(config["renderMode"], "browser");
+}
+
+#[tokio::test]
+async fn an_instance_can_be_told_to_render_on_the_server() {
+    let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
+    let router = rustycv_server::build_app(
+        &format!("sqlite://{}", path.display()),
+        rustycv_server::state::RenderMode::Server,
+    )
+    .await
+    .expect("app builds");
+    let mut app = TestApp {
+        router,
+        path,
+        session: None,
+    };
+    app.session = Some(app.register("owner@example.com").await);
+
+    let (_, config) = app.json("GET", "/api/config", json!({})).await;
+    assert_eq!(config["renderMode"], "server");
+}
+
 // ----------------------------------------------------------------- accounts
 
 #[tokio::test]
@@ -555,6 +592,7 @@ async fn nothing_but_signing_in_works_without_a_session() {
         ("GET", "/api/applications"),
         ("POST", "/api/render"),
         ("GET", "/api/templates"),
+        ("GET", "/api/config"),
         ("GET", "/api/auth/me"),
     ] {
         let (status, _) = app.json_as(None, method, uri, json!({})).await;
@@ -855,6 +893,7 @@ async fn signed_out_limited_to(limit: u32) -> TestApp {
         limiter: rustycv_server::ratelimit::RateLimiter::with_limit(limit),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        render_mode: rustycv_server::state::RenderMode::default(),
     });
 
     TestApp {
@@ -1013,6 +1052,7 @@ async fn the_first_account_adopts_cvs_that_predate_accounts() {
         limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        render_mode: rustycv_server::state::RenderMode::default(),
     });
     let mut app = TestApp {
         router,
@@ -1450,6 +1490,7 @@ async fn app_with_public_limits(ip_limit: u32, cv_limit: u32) -> TestApp {
         limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(ip_limit),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(cv_limit),
+        render_mode: rustycv_server::state::RenderMode::default(),
     });
     let mut app = TestApp {
         router,

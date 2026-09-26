@@ -8,17 +8,15 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { ApiError } from '../api'
-import { renderPdf, type RenderMode } from '../renderer'
-import type { CvDocument, Diagnostic } from '../types'
+import { renderPdf } from '../renderer'
+import type { CvDocument, Diagnostic, RenderMode } from '../types'
 
 interface PreviewState {
   url: string | null
   pending: boolean
   diagnostics: Diagnostic[]
   error: string | null
-  /** Where the render on screen was compiled, once one has succeeded. */
-  renderedBy: RenderMode | null
-  /** Why that is not where it was asked for, when it isn't. */
+  /** Why the render on screen did not happen where it was asked to, if so. */
   fellBackBecause: string | null
 }
 
@@ -36,7 +34,7 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
    * this component simply renders whenever the token moves.
    */
   renderAt: string
-  /** Which machine compiles it. Changing it re-renders what is on screen. */
+  /** Which machine compiles it, as `/api/config` named. */
   mode: RenderMode
 }>(function PdfPreview({ document, renderAt, mode }, ref) {
   const [expanded, setExpanded] = useState(false)
@@ -47,7 +45,6 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
     pending: true,
     diagnostics: [],
     error: null,
-    renderedBy: null,
     fellBackBecause: null,
   })
 
@@ -62,7 +59,7 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
     setState((s) => ({ ...s, pending: true }))
 
     renderPdf(documentRef.current, mode, controller.signal)
-      .then(({ blob, renderedBy, fellBackBecause }) => {
+      .then(({ blob, fellBackBecause }) => {
         if (cancelled) return
         const url = URL.createObjectURL(blob)
         setState((previous) => {
@@ -74,7 +71,6 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
             pending: false,
             diagnostics: [],
             error: null,
-            renderedBy,
             fellBackBecause: fellBackBecause ?? null,
           }
         })
@@ -122,14 +118,13 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
       <div className="preview-status">
         {state.pending ? <span className="badge">Rendering…</span> : null}
         {state.error ? <span className="badge badge-error">{state.error}</span> : null}
-        {/* Only ever says something when the answer would surprise: that the
-            PDF was built here, or that it was asked for here and wasn't. */}
+        {/* Silent when the render happened where it was configured to. A
+            render that worked is not news; one that quietly moved machines is,
+            because it is the only visible sign the wasm module is missing. */}
         {state.fellBackBecause ? (
           <span className="badge badge-notice" title={state.fellBackBecause}>
-            ☁ Rendered on the server
+            Rendered on the server
           </span>
-        ) : state.renderedBy === 'browser' ? (
-          <span className="badge">⚡ Rendered here</span>
         ) : null}
       </div>
 

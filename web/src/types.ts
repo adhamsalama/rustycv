@@ -112,6 +112,20 @@ export interface CvDocument {
   sections: Section[]
 }
 
+/**
+ * Where PDFs are compiled, as this instance was started with.
+ *
+ * The same renderer either way — the browser runs the server's own Rust render
+ * path compiled to wasm — so this names a machine, not an output. It is the
+ * operator's decision and arrives over the wire; the editor has no say in it
+ * and no way to override it.
+ */
+export type RenderMode = 'server' | 'browser'
+
+export interface AppConfig {
+  renderMode: RenderMode
+}
+
 export interface CvSummary {
   id: string
   title: string
