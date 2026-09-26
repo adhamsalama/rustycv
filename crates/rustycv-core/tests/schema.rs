@@ -45,7 +45,7 @@ fn sparse_documents_deserialize() {
     // fields must still load rather than erroring the user out of their CV.
     let doc: CvDocument = serde_json::from_str(r#"{"basics":{"fullName":"A"}}"#).unwrap();
     assert_eq!(doc.basics.full_name, "A");
-    assert_eq!(doc.template, "classic");
+    assert_eq!(doc.template, "modern");
     assert!(doc.sections.is_empty());
 
     let doc: CvDocument = serde_json::from_str(
