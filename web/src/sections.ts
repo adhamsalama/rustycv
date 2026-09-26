@@ -139,6 +139,18 @@ export const SECTION_SPECS: Record<SectionKind, SectionSpec> = {
     ],
     summary: (item) => str(item, 'name') || 'New reference',
   },
+  custom: {
+    label: 'Custom Section',
+    itemLabel: 'entry',
+    defaultTitle: 'Custom Section',
+    fields: [
+      { key: 'heading', label: 'Heading', type: 'text', width: 'half', placeholder: 'Best Paper Award' },
+      { key: 'subheading', label: 'Subheading', type: 'text', width: 'half' },
+      { key: 'meta', label: 'Meta', type: 'text', width: 'half', placeholder: '2024' },
+      { key: 'description', label: 'Description', type: 'rich' },
+    ],
+    summary: (item) => str(item, 'heading') || 'New entry',
+  },
 }
 
 export const SECTION_KINDS = Object.keys(SECTION_SPECS) as SectionKind[]

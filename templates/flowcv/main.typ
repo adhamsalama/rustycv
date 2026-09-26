@@ -317,6 +317,20 @@
   if parts.len() > 0 { block(width: 100%, parts.join(", ")) }
 }
 
+#let fc-custom(items) = {
+  for it in items {
+    let heading = join-parts((it.at("heading", default: ""), it.at("subheading", default: "")))
+    block(width: 100%, below: leading, fc-row(
+      text(weight: 700, heading),
+      text(weight: "regular", it.at("meta", default: "")),
+    ))
+    if rich-nonempty(it.at("description", default: "")) {
+      block(width: 100%, above: 0.3em, rich(it.description, gap: leading, marker: fc-marker))
+    }
+    v(0.5em, weak: true)
+  }
+}
+
 #let fc-references(items) = {
   for it in items {
     block(width: 100%, {
@@ -350,4 +364,5 @@
   }
   else if section.kind == "interests" { fc-inline-list(items, it => it.name) }
   else if section.kind == "references" { fc-references(items) }
+  else if section.kind == "custom" { fc-custom(items) }
 }

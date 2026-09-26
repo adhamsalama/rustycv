@@ -16,8 +16,8 @@ mod theme;
 pub use date::DateSpec;
 pub use rich::{Block, BlockKind, RichText, Run};
 pub use section::{
-    CertificationItem, EducationItem, EntryOrder, ExperienceItem, InterestItem, LanguageItem,
-    ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
+    CertificationItem, CustomItem, EducationItem, EntryOrder, ExperienceItem, InterestItem,
+    LanguageItem, ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,
 };
 pub use theme::{BulletStyle, HeadingStyle, PageSize, Theme};
 

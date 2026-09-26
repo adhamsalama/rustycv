@@ -111,6 +111,12 @@ pub enum SectionBody {
         #[serde(default)]
         items: Vec<ReferenceItem>,
     },
+    /// A user-authored section with no fixed shape — an award, a publication
+    /// list, anything the built-in kinds don't cover.
+    Custom {
+        #[serde(default)]
+        items: Vec<CustomItem>,
+    },
 }
 
 impl SectionBody {
@@ -124,6 +130,7 @@ impl SectionBody {
             Self::Languages { .. } => SectionKind::Languages,
             Self::Interests { .. } => SectionKind::Interests,
             Self::References { .. } => SectionKind::References,
+            Self::Custom { .. } => SectionKind::Custom,
         }
     }
 
@@ -137,6 +144,7 @@ impl SectionBody {
             Self::Languages { items } => items.len(),
             Self::Interests { items } => items.len(),
             Self::References { items } => items.len(),
+            Self::Custom { items } => items.len(),
         }
     }
 
@@ -159,6 +167,7 @@ impl SectionBody {
             Self::Languages { items } => count!(items),
             Self::Interests { items } => count!(items),
             Self::References { items } => count!(items),
+            Self::Custom { items } => count!(items),
         }
     }
 
@@ -179,6 +188,7 @@ impl SectionBody {
             Self::Languages { items } => refresh!(items),
             Self::Interests { items } => refresh!(items),
             Self::References { items } => refresh!(items),
+            Self::Custom { items } => refresh!(items),
         }
     }
 }
@@ -209,10 +219,11 @@ pub enum SectionKind {
     Languages,
     Interests,
     References,
+    Custom,
 }
 
 impl SectionKind {
-    pub const ALL: [SectionKind; 8] = [
+    pub const ALL: [SectionKind; 9] = [
         Self::Experience,
         Self::Education,
         Self::Skills,
@@ -221,6 +232,7 @@ impl SectionKind {
         Self::Languages,
         Self::Interests,
         Self::References,
+        Self::Custom,
     ];
 
     pub fn default_title(self) -> &'static str {
@@ -233,6 +245,7 @@ impl SectionKind {
             Self::Languages => "Languages",
             Self::Interests => "Interests",
             Self::References => "References",
+            Self::Custom => "Custom Section",
         }
     }
 
@@ -250,6 +263,7 @@ impl SectionKind {
             Self::Languages => SectionBody::Languages { items: vec![] },
             Self::Interests => SectionBody::Interests { items: vec![] },
             Self::References => SectionBody::References { items: vec![] },
+            Self::Custom => SectionBody::Custom { items: vec![] },
         }
     }
 }
@@ -365,5 +379,17 @@ item! {
         company: String,
         email: String,
         phone: String,
+    }
+}
+
+item! {
+    /// One entry of a custom section. `heading` is the only field every entry
+    /// wants; `subheading`, `meta` and `description` are free text so the same
+    /// shape covers an award, a publication or a one-off note.
+    CustomItem {
+        heading: String,
+        subheading: String,
+        meta: String,
+        description: RichText,
     }
 }

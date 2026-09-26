@@ -376,6 +376,23 @@
   }
 }
 
+// A custom section's entries have no fixed meaning, so this is the same
+// heading/meta/body shape as education or certifications rather than
+// anything more specific.
+#let custom-section(items, style) = {
+  let t = style.tight
+  for it in items {
+    let heading = join-parts((it.at("heading", default: ""), it.at("subheading", default: "")))
+    block(above: 0.6em * t, below: 0.2em * t, row(
+      (style.title)(heading),
+      (style.meta)(it.at("meta", default: "")),
+    ))
+    if rich-nonempty(it.at("description", default: "")) {
+      block(spacing: 0.35em * t, rich(it.description, gap: style.leading, marker: style.marker))
+    }
+  }
+}
+
 // Walk the document in the order the user arranged it. Hidden or empty sections
 // leave no trace — not even their heading.
 #let render-sections(cv, style) = {
@@ -395,6 +412,7 @@
     else if section.kind == "languages" { languages-section(items, style) }
     else if section.kind == "interests" { interests-section(items, style) }
     else if section.kind == "references" { references-section(items, style) }
+    else if section.kind == "custom" { custom-section(items, style) }
   }
 }
 

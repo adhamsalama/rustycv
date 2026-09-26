@@ -12,6 +12,7 @@ export type SectionKind =
   | 'languages'
   | 'interests'
   | 'references'
+  | 'custom'
 
 export interface DateSpec {
   year: number

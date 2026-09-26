@@ -241,9 +241,10 @@ function AddSection({
   onAdd: (kind: SectionKind) => void
 }) {
   // Offer the kinds that aren't in the CV yet first; a second Skills section is
-  // legal but is almost never what someone means.
+  // legal but is almost never what someone means. Custom sections are the
+  // exception — there's no fixed number of them, so it always stays offered.
   const available = useMemo(
-    () => SECTION_KINDS.filter((kind) => !existing.includes(kind)),
+    () => SECTION_KINDS.filter((kind) => kind === 'custom' || !existing.includes(kind)),
     [existing],
   )
 
