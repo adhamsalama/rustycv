@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RustyCV</title>
+    <!-- Apply the saved appearance before the first paint. The app would set
+         the same attribute on mount, but the module script is deferred, so a
+         dark-mode user would see a white flash first. Keep in step with
+         `applyAppearance` in src/theme.ts. -->
+    <script>
+      try {
+        var saved = localStorage.getItem('rustycv:appearance')
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.dataset.appearance = saved
+        }
+      } catch (e) {
+        /* storage disabled — fall back to following the system */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

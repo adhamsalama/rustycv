@@ -11,6 +11,7 @@ import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview } from '../components/PdfPreview'
+import { AppearanceToggle } from '../components/AppearanceToggle'
 import { SortableList, SortableRow } from '../components/Sortable'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
@@ -103,6 +104,7 @@ export function Editor() {
           {saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : 'Saved'}
         </span>
         <div className="spacer" />
+        <AppearanceToggle />
         <a className="ghost" href={api.exportUrl(id)}>
           Export JSON
         </a>

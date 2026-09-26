@@ -122,6 +122,22 @@ Two audit tests exist to catch whole classes of this:
 `every_theme_control_does_something_on_every_template` (dead controls) and
 `spacing_scales_with_type_size` (absolute units).
 
+## Editor appearance
+
+The UI's light/dark is separate from the CV's own theme and never reaches the
+render path — a CV is a printed page and its PDF is white either way.
+
+**Every editor colour is a `light-dark()` token in `:root`.** A literal colour
+anywhere else in `styles.css` is a colour that only works in one scheme, which
+is invisible until someone switches over — `names no scheme-specific colour
+outside the tokens` in `theme.test.ts` fails on one, and its allowlist is the
+place to justify a genuine exception (the CV's paper, overlay scrims).
+
+`system` is the default and sets no attribute at all, so plain CSS follows the
+OS; the toggle only writes `data-appearance` for an explicit choice. The inline
+script in `web/index.html` applies the stored one before first paint and has to
+stay in step with `applyAppearance`.
+
 ## Wire format
 
 camelCase throughout. Rich text is a flat list of styled runs — never HTML or
