@@ -127,10 +127,12 @@ All optional.
 | ------------------ | ------------------------------------- | -------------------------------------------------------------- |
 | `DATABASE_URL`     | `sqlite://rustycv.db`                 | SQLite file. Created automatically; migrations run at startup. |
 | `PORT`             | `8080`                                | API/server port.                                               |
-| `HOST`             | `127.0.0.1`                           | Bind address. Loopback on purpose — there is no auth. The Docker image sets `0.0.0.0`. |
+| `HOST`             | `127.0.0.1`                           | Bind address. Loopback on purpose — the session cookie is not sent over TLS. The Docker image sets `0.0.0.0`. |
 | `RUSTYCV_WEB_DIST` | `web/dist`                            | Where the built frontend lives.                                |
 | `RUST_LOG`         | `rustycv_server=info,tower_http=warn` | Standard `tracing` filter.                                     |
 | `RUSTYCV_API`      | `http://127.0.0.1:8080`               | Vite dev-server proxy target (frontend only).                  |
+| `SEED_EMAIL`       | `dev@rustycv.local`                   | Account the `seed` binary writes into, creating it if needed.  |
+| `SEED_PASSWORD`    | `rustycv-dev`                         | Its password.                                                  |
 
 ```sh
 DATABASE_URL=sqlite:///tmp/scratch.db PORT=9000 cargo run -p rustycv-server
@@ -202,9 +204,11 @@ above. The container still runs as a non-root user: the binary carries
 `cap_net_bind_service`, which is the only thing it needs root for. `PORT`
 overrides the port as usual.
 
-**This has no authentication.** Publishing the port past your own machine
-publishes every CV in it, and a writable API with it. Put it behind something
-that authenticates, or keep it on localhost.
+**There is authentication, but no TLS.** Accounts keep users out of each
+other's CVs; they do nothing about the network. The session cookie crosses the
+wire in the clear, so publishing the port past your own machine means putting a
+TLS terminator in front of it — and once you have one, the cookie should carry
+`Secure` too (see `auth::session_cookie`).
 
 Tags: `latest` from `main`, `1.2.3` and `1.2` from a `v1.2.3` git tag, and a
 short SHA on every build. Building it yourself is the same one step:
@@ -223,7 +227,7 @@ pushes to whatever `IMAGE` names at the top of the file.
 ## Tests
 
 ```sh
-cargo test --workspace     # 83 tests
+cargo test --workspace     # 105 tests
 pnpm -C web test           # 55 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
@@ -235,6 +239,13 @@ unknown fields; every template renders the fixture, an empty document, and one
 blank entry of every section kind; hostile theme values are clamped rather than
 rejected; the API round-trips create → save → reload → export → import; and
 `flowcv` is asserted to still fit the reference resume on a single page.
+
+On the account side: one account is asserted unable to read, edit, delete,
+download or link to another's CVs or cards through any route that takes an id;
+the caps refuse the eleventh CV and the eleventh application and let go again
+once one is deleted; a session is revoked by signing out rather than only
+forgotten; and the rate limiter is asserted to count failed sign-ins, to follow
+the account across two sessions, and to leave everybody else alone.
 
 Two of the stronger ones render to pixels rather than eyeballing: hiding every
 entry in a section is asserted to render _identically_ to deleting the section,
@@ -302,8 +313,14 @@ generic 10pt/16mm would quietly break the reproduction.
 
 ## API
 
+Every endpoint but `/api/auth/signup` and `/api/auth/login` needs a session,
+and answers **401** without one.
+
 | Method               | Path                           | Purpose                                               |
 | -------------------- | ------------------------------ | ----------------------------------------------------- |
+| `POST`               | `/api/auth/signup`, `/api/auth/login` | create or open a session; sets the cookie      |
+| `POST`               | `/api/auth/logout`             | revoke this session                                   |
+| `GET`                | `/api/auth/me`                 | the signed-in account, or 401                         |
 | `GET`                | `/api/templates`, `/api/fonts` | what the theme picker offers                          |
 | `GET` `POST`         | `/api/cvs`                     | list; create (`?from=<id>` duplicates)                |
 | `GET` `PUT` `DELETE` | `/api/cvs/{id}`                | fetch / save / delete                                 |
@@ -316,6 +333,11 @@ Preview and download share one render path, so what you see is what you get.
 A template that fails to compile returns **422** with structured Typst
 diagnostics (file, line, message) rather than a 500 and a blank preview — the
 editor overlays them on the last good render.
+
+An account may keep **10 CVs** and **10 applications**; the eleventh of either
+is a **409** naming the ceiling, and deleting one makes room. Every caller gets
+**1000 requests an hour** — counted per account when signed in, per address
+when not — and past that a **429** with `Retry-After`.
 
 ```sh
 curl -X POST http://localhost:8080/api/render \

@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { AccountMenu } from '../components/AccountMenu'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import type { CvDocument } from '../types'
 
@@ -9,30 +10,34 @@ export function Dashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const fileInput = useRef<HTMLInputElement>(null)
-  const [importError, setImportError] = useState<string | null>(null)
+  /** Whatever last stopped a CV being made: a bad import, or the 10-CV cap. */
+  const [error, setError] = useState<string | null>(null)
 
   const { data: cvs = [], isLoading } = useQuery({ queryKey: ['cvs'], queryFn: api.listCvs })
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['cvs'] })
 
+  const onError = (failure: Error) => setError(failure.message)
+
   const create = useMutation({
     mutationFn: () => api.createCv(),
     onSuccess: (cv) => navigate(`/cv/${cv.id}`),
+    onError,
   })
-  const duplicate = useMutation({ mutationFn: api.duplicateCv, onSuccess: refresh })
-  const remove = useMutation({ mutationFn: api.deleteCv, onSuccess: refresh })
+  const duplicate = useMutation({ mutationFn: api.duplicateCv, onSuccess: refresh, onError })
+  const remove = useMutation({ mutationFn: api.deleteCv, onSuccess: refresh, onError })
   const importCv = useMutation({
     mutationFn: (document: CvDocument) => api.importCv(document),
     onSuccess: (cv) => navigate(`/cv/${cv.id}`),
-    onError: (error: Error) => setImportError(error.message),
+    onError,
   })
 
   const handleFile = async (file: File) => {
-    setImportError(null)
+    setError(null)
     try {
       importCv.mutate(JSON.parse(await file.text()) as CvDocument)
     } catch {
-      setImportError('That file is not valid JSON.')
+      setError('That file is not valid JSON.')
     }
   }
 
@@ -47,6 +52,7 @@ export function Dashboard() {
           </p>
         </div>
         <div className="dashboard-actions">
+          <AccountMenu />
           <AppearanceToggle />
           <Link className="ghost" to="/jobs">
             Job tracker
@@ -54,7 +60,14 @@ export function Dashboard() {
           <button type="button" className="ghost" onClick={() => fileInput.current?.click()}>
             Import JSON
           </button>
-          <button type="button" className="primary" onClick={() => create.mutate()}>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              setError(null)
+              create.mutate()
+            }}
+          >
             New CV
           </button>
         </div>
@@ -72,7 +85,11 @@ export function Dashboard() {
         }}
       />
 
-      {importError ? <p className="badge badge-error">{importError}</p> : null}
+      {error ? (
+        <p className="badge badge-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {isLoading ? <p className="muted">Loading…</p> : null}
 
@@ -94,7 +111,14 @@ export function Dashboard() {
               <a className="ghost" href={api.pdfUrl(cv.id)}>
                 PDF
               </a>
-              <button type="button" className="ghost" onClick={() => duplicate.mutate(cv.id)}>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setError(null)
+                  duplicate.mutate(cv.id)
+                }}
+              >
                 Duplicate
               </button>
               <button

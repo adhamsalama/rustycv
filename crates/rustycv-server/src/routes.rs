@@ -1,19 +1,32 @@
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post, put};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use rustycv_core::CvDocument;
 use serde::{Deserialize, Serialize};
 
+use crate::auth::{self, Credentials, User};
 use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, Application, ApplicationInput, Status};
+use crate::middleware::{require_auth, CurrentUser, SessionToken};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
-    Router::new()
+    // Signing up and signing in are the only things that can be done without
+    // an account; everything else goes behind `require_auth`, including the
+    // template and font listings — they are only ever read by an editor that
+    // is already open, and leaving them out would be a list of endpoints to
+    // keep in step by hand.
+    let public = Router::new()
+        .route("/auth/signup", post(signup))
+        .route("/auth/login", post(login))
+        .route("/auth/logout", post(logout))
+        .route("/auth/me", get(me));
+
+    let protected = Router::new()
         .route("/templates", get(list_templates))
         .route("/fonts", get(list_fonts))
         .route("/render", post(render_preview))
@@ -31,6 +44,70 @@ pub fn router() -> Router<AppState> {
             put(update_application).delete(delete_application),
         )
         .route("/applications/{id}/move", post(move_application))
+        .layer(axum::middleware::from_fn(require_auth));
+
+    public.merge(protected)
+}
+
+// ---------------------------------------------------------------- accounts
+
+/// Signing up signs you in: there is no verification step to wait for, so
+/// leaving the user on the form to type the same details again would be
+/// ceremony with nothing behind it.
+async fn signup(
+    State(state): State<AppState>,
+    Json(credentials): Json<Credentials>,
+) -> ApiResult<Response> {
+    let user = auth::signup(&state.pool, &credentials).await?;
+    let token = auth::create_session(&state.pool, &user.id).await?;
+    Ok(session_response(StatusCode::CREATED, &token, user))
+}
+
+async fn login(
+    State(state): State<AppState>,
+    Json(credentials): Json<Credentials>,
+) -> ApiResult<Response> {
+    let user = auth::login(&state.pool, &credentials).await?;
+    let token = auth::create_session(&state.pool, &user.id).await?;
+    Ok(session_response(StatusCode::OK, &token, user))
+}
+
+/// Signing out deletes the session rather than only clearing the cookie, so a
+/// token that was copied somewhere stops working too.
+///
+/// Public, and quiet about it: signing out without a session is the state the
+/// caller wanted, not an error.
+async fn logout(
+    State(state): State<AppState>,
+    token: Option<Extension<SessionToken>>,
+) -> ApiResult<Response> {
+    if let Some(Extension(SessionToken(token))) = token {
+        auth::delete_session(&state.pool, &token).await?;
+    }
+    Ok(clear_session_response())
+}
+
+/// Who is signed in. The editor's first call: a 401 here is what puts the
+/// login form on screen.
+async fn me(user: CurrentUser) -> Json<User> {
+    Json(user.0)
+}
+
+fn session_response(status: StatusCode, token: &str, user: User) -> Response {
+    (
+        status,
+        [(header::SET_COOKIE, auth::session_cookie(token))],
+        Json(user),
+    )
+        .into_response()
+}
+
+fn clear_session_response() -> Response {
+    (
+        StatusCode::NO_CONTENT,
+        [(header::SET_COOKIE, auth::expired_cookie())],
+    )
+        .into_response()
 }
 
 // ------------------------------------------------------------------ metadata
@@ -94,9 +171,10 @@ async fn render_preview(
 
 async fn download_pdf(
     State(state): State<AppState>,
+    user: CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<Response> {
-    let cv = db::get(&state.pool, &id).await?;
+    let cv = db::get(&state.pool, user.id(), &id).await?;
     let filename = format!("{}.pdf", slug(&cv.document.basics.full_name, &cv.title));
     let pdf = state.renderer.pdf(cv.document).await?;
     Ok(pdf_response(pdf, Some(&filename)))
@@ -141,12 +219,16 @@ struct CreateBody {
     title: Option<String>,
 }
 
-async fn list_cvs(State(state): State<AppState>) -> ApiResult<Json<Vec<db::CvSummary>>> {
-    Ok(Json(db::list(&state.pool).await?))
+async fn list_cvs(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> ApiResult<Json<Vec<db::CvSummary>>> {
+    Ok(Json(db::list(&state.pool, user.id()).await?))
 }
 
 async fn create_cv(
     State(state): State<AppState>,
+    user: CurrentUser,
     Query(params): Query<CreateParams>,
     body: Option<Json<CreateBody>>,
 ) -> ApiResult<(StatusCode, Json<db::Cv>)> {
@@ -154,7 +236,7 @@ async fn create_cv(
 
     let (title, document) = match params.from {
         Some(ref source_id) => {
-            let source = db::get(&state.pool, source_id).await?;
+            let source = db::get(&state.pool, user.id(), source_id).await?;
             let mut document = source.document;
             // A duplicate must not share ids with its original, or the two would
             // fight over React keys and drag handles in the editor.
@@ -170,12 +252,16 @@ async fn create_cv(
         ),
     };
 
-    let cv = db::create(&state.pool, &title, &document).await?;
+    let cv = db::create(&state.pool, user.id(), &title, &document).await?;
     Ok((StatusCode::CREATED, Json(cv)))
 }
 
-async fn get_cv(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Json<db::Cv>> {
-    Ok(Json(db::get(&state.pool, &id).await?))
+async fn get_cv(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<db::Cv>> {
+    Ok(Json(db::get(&state.pool, user.id(), &id).await?))
 }
 
 #[derive(Deserialize)]
@@ -187,15 +273,27 @@ struct UpdateBody {
 
 async fn update_cv(
     State(state): State<AppState>,
+    user: CurrentUser,
     Path(id): Path<String>,
     Json(body): Json<UpdateBody>,
 ) -> ApiResult<Json<db::Cv>> {
-    let cv = db::update(&state.pool, &id, body.title.as_deref(), &body.document).await?;
+    let cv = db::update(
+        &state.pool,
+        user.id(),
+        &id,
+        body.title.as_deref(),
+        &body.document,
+    )
+    .await?;
     Ok(Json(cv))
 }
 
-async fn delete_cv(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<StatusCode> {
-    db::delete(&state.pool, &id).await?;
+async fn delete_cv(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    db::delete(&state.pool, user.id(), &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -203,8 +301,12 @@ async fn delete_cv(State(state): State<AppState>, Path(id): Path<String>) -> Api
 
 /// Download the CV *data*. This is the artifact worth keeping — the PDF can
 /// always be regenerated from it, but not the other way round.
-async fn export_cv(State(state): State<AppState>, Path(id): Path<String>) -> ApiResult<Response> {
-    let cv = db::get(&state.pool, &id).await?;
+async fn export_cv(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Response> {
+    let cv = db::get(&state.pool, user.id(), &id).await?;
     let json = serde_json::to_vec_pretty(&cv.document)?;
     let filename = format!("{}.json", slug(&cv.document.basics.full_name, &cv.title));
 
@@ -228,6 +330,7 @@ struct ImportBody {
 
 async fn import_cv(
     State(state): State<AppState>,
+    user: CurrentUser,
     Json(body): Json<ImportBody>,
 ) -> ApiResult<(StatusCode, Json<db::Cv>)> {
     let mut document = body.document;
@@ -253,30 +356,37 @@ async fn import_cv(
         })
         .unwrap_or_else(|| "Imported CV".to_string());
 
-    let cv = db::create(&state.pool, &title, &document).await?;
+    let cv = db::create(&state.pool, user.id(), &title, &document).await?;
     Ok((StatusCode::CREATED, Json(cv)))
 }
 
 // -------------------------------------------------------------- job tracker
 
-async fn list_applications(State(state): State<AppState>) -> ApiResult<Json<Vec<Application>>> {
-    Ok(Json(jobs::list(&state.pool).await?))
+async fn list_applications(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> ApiResult<Json<Vec<Application>>> {
+    Ok(Json(jobs::list(&state.pool, user.id()).await?))
 }
 
 async fn create_application(
     State(state): State<AppState>,
+    user: CurrentUser,
     Json(input): Json<ApplicationInput>,
 ) -> ApiResult<(StatusCode, Json<Application>)> {
-    let application = jobs::create(&state.pool, input).await?;
+    let application = jobs::create(&state.pool, user.id(), input).await?;
     Ok((StatusCode::CREATED, Json(application)))
 }
 
 async fn update_application(
     State(state): State<AppState>,
+    user: CurrentUser,
     Path(id): Path<String>,
     Json(input): Json<ApplicationInput>,
 ) -> ApiResult<Json<Application>> {
-    Ok(Json(jobs::update(&state.pool, &id, input).await?))
+    Ok(Json(
+        jobs::update(&state.pool, user.id(), &id, input).await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -293,19 +403,21 @@ struct MoveBody {
 /// a card being dragged while its form is open cannot write stale text back.
 async fn move_application(
     State(state): State<AppState>,
+    user: CurrentUser,
     Path(id): Path<String>,
     Json(body): Json<MoveBody>,
 ) -> ApiResult<Json<Application>> {
     let status = Status::from_wire(&body.status)?;
     Ok(Json(
-        jobs::move_to(&state.pool, &id, status, body.index).await?,
+        jobs::move_to(&state.pool, user.id(), &id, status, body.index).await?,
     ))
 }
 
 async fn delete_application(
     State(state): State<AppState>,
+    user: CurrentUser,
     Path(id): Path<String>,
 ) -> ApiResult<StatusCode> {
-    jobs::delete(&state.pool, &id).await?;
+    jobs::delete(&state.pool, user.id(), &id).await?;
     Ok(StatusCode::NO_CONTENT)
 }

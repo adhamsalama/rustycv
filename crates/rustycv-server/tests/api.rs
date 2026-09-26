@@ -1,7 +1,7 @@
 //! End-to-end tests over the real router and a real (temporary) SQLite file.
 
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use rustycv_core::CvDocument;
 use serde_json::{json, Value};
@@ -9,26 +9,99 @@ use tower::ServiceExt;
 
 const FIXTURE: &str = include_str!("../../../fixtures/adham.json");
 
-/// A router backed by a throwaway database file.
+/// Anything long enough to clear the password floor.
+const PASSWORD: &str = "correct-horse-battery";
+
+/// A router backed by a throwaway database file, signed in as one account.
 ///
 /// Not `sqlite::memory:` — the pool opens several connections and each would
 /// get its own empty in-memory database.
+///
+/// Every request carries the session cookie unless a test asks for otherwise,
+/// so a test about CVs stays a test about CVs.
 struct TestApp {
     router: Router,
     path: std::path::PathBuf,
+    session: Option<String>,
 }
 
 impl TestApp {
     async fn new() -> Self {
+        let mut app = Self::signed_out().await;
+        app.session = Some(app.register("owner@example.com").await);
+        app
+    }
+
+    /// The same app with nobody signed in, for the tests that are about what
+    /// happens without a session.
+    async fn signed_out() -> Self {
         let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
         let router = rustycv_server::build_app(&format!("sqlite://{}", path.display()))
             .await
             .expect("app builds");
-        Self { router, path }
+        Self {
+            router,
+            path,
+            session: None,
+        }
+    }
+
+    /// Create an account and return the session cookie it was issued, without
+    /// changing who this app is signed in as.
+    async fn register(&self, email: &str) -> String {
+        let response = self
+            .response_as(
+                None,
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/auth/signup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({"email": email, "password": PASSWORD}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await;
+
+        assert_eq!(
+            response.status(),
+            StatusCode::CREATED,
+            "signing up {email} should succeed"
+        );
+        session_cookie(&response)
+            .unwrap_or_else(|| panic!("signing up {email} should set a session cookie"))
     }
 
     async fn send(&self, request: Request<Body>) -> (StatusCode, Vec<u8>) {
-        let response = self.router.clone().oneshot(request).await.unwrap();
+        self.send_as(self.session.as_deref(), request).await
+    }
+
+    /// The whole response, for the tests that assert on headers.
+    async fn response(&self, request: Request<Body>) -> axum::response::Response {
+        self.response_as(self.session.as_deref(), request).await
+    }
+
+    async fn response_as(
+        &self,
+        session: Option<&str>,
+        request: Request<Body>,
+    ) -> axum::response::Response {
+        let mut request = request;
+        if let Some(cookie) = session {
+            request
+                .headers_mut()
+                .insert(header::COOKIE, cookie.parse().unwrap());
+        }
+        self.router.clone().oneshot(request).await.unwrap()
+    }
+
+    /// Send with an explicit session — `None` for an anonymous request.
+    async fn send_as(
+        &self,
+        session: Option<&str>,
+        request: Request<Body>,
+    ) -> (StatusCode, Vec<u8>) {
+        let response = self.response_as(session, request).await;
         let status = response.status();
         let body = axum::body::to_bytes(response.into_body(), 32 * 1024 * 1024)
             .await
@@ -38,8 +111,20 @@ impl TestApp {
     }
 
     async fn json(&self, method: &str, uri: &str, body: Value) -> (StatusCode, Value) {
+        self.json_as(self.session.as_deref(), method, uri, body)
+            .await
+    }
+
+    async fn json_as(
+        &self,
+        session: Option<&str>,
+        method: &str,
+        uri: &str,
+        body: Value,
+    ) -> (StatusCode, Value) {
         let (status, bytes) = self
-            .send(
+            .send_as(
+                session,
                 Request::builder()
                     .method(method)
                     .uri(uri)
@@ -56,6 +141,16 @@ impl TestApp {
         self.send(Request::builder().uri(uri).body(Body::empty()).unwrap())
             .await
     }
+}
+
+/// The `name=value` pair from a response's `Set-Cookie`, ready to be sent back
+/// as a `Cookie` header. An expiry-clearing cookie yields an empty value.
+fn session_cookie(response: &axum::response::Response) -> Option<String> {
+    let header = response.headers().get(header::SET_COOKIE)?.to_str().ok()?;
+    let pair = header.split(';').next()?.trim();
+    pair.split_once('=')
+        .filter(|(_, value)| !value.is_empty())
+        .map(|_| pair.to_string())
 }
 
 impl Drop for TestApp {
@@ -136,16 +231,13 @@ async fn downloading_a_pdf_names_the_file_after_the_person() {
     .await;
 
     let response = app
-        .router
-        .clone()
-        .oneshot(
+        .response(
             Request::builder()
                 .uri(format!("/api/cvs/{id}/pdf"))
                 .body(Body::empty())
                 .unwrap(),
         )
-        .await
-        .unwrap();
+        .await;
 
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["content-type"], "application/pdf");
@@ -447,4 +539,496 @@ async fn deleting_a_card_removes_it_from_the_board() {
         .json("DELETE", &format!("/api/applications/{id}"), json!({}))
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+// ----------------------------------------------------------------- accounts
+
+#[tokio::test]
+async fn nothing_but_signing_in_works_without_a_session() {
+    let app = TestApp::signed_out().await;
+
+    // One of each shape: a listing, a write, a render and a metadata read.
+    for (method, uri) in [
+        ("GET", "/api/cvs"),
+        ("POST", "/api/cvs"),
+        ("GET", "/api/applications"),
+        ("POST", "/api/render"),
+        ("GET", "/api/templates"),
+        ("GET", "/api/auth/me"),
+    ] {
+        let (status, _) = app.json_as(None, method, uri, json!({})).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "{method} {uri} should need a session"
+        );
+    }
+}
+
+#[tokio::test]
+async fn signing_up_signs_you_in_and_signing_out_revokes_the_session() {
+    let app = TestApp::signed_out().await;
+    let session = app.register("someone@example.com").await;
+
+    let (status, me) = app
+        .json_as(Some(&session), "GET", "/api/auth/me", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["email"], "someone@example.com");
+    assert!(
+        me.get("passwordHash").is_none() && me.get("password_hash").is_none(),
+        "the hash must not be on the wire: {me}"
+    );
+
+    let (status, _) = app
+        .json_as(Some(&session), "POST", "/api/auth/logout", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    // The cookie is gone from the browser, but the token is also dead: a copy
+    // of it kept anywhere else stops working too.
+    let (status, _) = app
+        .json_as(Some(&session), "GET", "/api/auth/me", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_address_is_one_account_and_a_wrong_password_is_refused() {
+    let app = TestApp::signed_out().await;
+    app.register("taken@example.com").await;
+
+    let (status, body) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/signup",
+            json!({"email": "TAKEN@example.com", "password": PASSWORD}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/login",
+            json!({"email": "taken@example.com", "password": "not-the-password"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // A case-different address is the same account, and still signs in.
+    let (status, _) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/login",
+            json!({"email": " Taken@Example.com ", "password": PASSWORD}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_short_password_or_a_bad_address_is_refused_before_an_account_exists() {
+    let app = TestApp::signed_out().await;
+
+    for body in [
+        json!({"email": "fine@example.com", "password": "short"}),
+        json!({"email": "not-an-address", "password": PASSWORD}),
+    ] {
+        let (status, _) = app.json_as(None, "POST", "/api/auth/signup", body).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/login",
+            json!({"email": "fine@example.com", "password": "short"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "nothing was created");
+}
+
+#[tokio::test]
+async fn one_account_cannot_reach_anothers_cv() {
+    let app = TestApp::new().await;
+    let stranger = app.register("stranger@example.com").await;
+
+    let (_, mine) = app.json("POST", "/api/cvs", json!({"title": "Mine"})).await;
+    let id = mine["id"].as_str().unwrap();
+
+    // 404 rather than 403 throughout: whether the id exists is not a stranger's
+    // business, and a 403 would confirm it.
+    for (method, uri) in [
+        ("GET", format!("/api/cvs/{id}")),
+        ("DELETE", format!("/api/cvs/{id}")),
+        ("GET", format!("/api/cvs/{id}/pdf")),
+        ("GET", format!("/api/cvs/{id}/export")),
+    ] {
+        let (status, _) = app.json_as(Some(&stranger), method, &uri, json!({})).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+
+    let (status, _) = app
+        .json_as(
+            Some(&stranger),
+            "PUT",
+            &format!("/api/cvs/{id}"),
+            json!({"title": "Hijacked", "document": fixture()}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (_, listed) = app
+        .json_as(Some(&stranger), "GET", "/api/cvs", json!({}))
+        .await;
+    assert_eq!(listed.as_array().unwrap().len(), 0, "{listed}");
+
+    // And the CV is untouched.
+    let (_, reloaded) = app.json("GET", &format!("/api/cvs/{id}"), json!({})).await;
+    assert_eq!(reloaded["title"], "Mine");
+}
+
+#[tokio::test]
+async fn one_account_cannot_reach_anothers_board() {
+    let app = TestApp::new().await;
+    let stranger = app.register("stranger@example.com").await;
+
+    let acme = add(&app, "Acme", "applied").await;
+
+    let (_, board) = app
+        .json_as(Some(&stranger), "GET", "/api/applications", json!({}))
+        .await;
+    assert_eq!(board.as_array().unwrap().len(), 0, "{board}");
+
+    for (method, uri, body) in [
+        (
+            "PUT",
+            format!("/api/applications/{acme}"),
+            json!({"company": "Hijacked", "role": "None"}),
+        ),
+        (
+            "POST",
+            format!("/api/applications/{acme}/move"),
+            json!({"status": "offer", "index": 0}),
+        ),
+        ("DELETE", format!("/api/applications/{acme}"), json!({})),
+    ] {
+        let (status, _) = app.json_as(Some(&stranger), method, &uri, body).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(column(&board, "applied"), ["Acme"]);
+}
+
+#[tokio::test]
+async fn a_card_cannot_be_linked_to_someone_elses_cv() {
+    // The board joins the CV's title onto the card, so a link across accounts
+    // would print a stranger's CV title on this board.
+    let app = TestApp::new().await;
+    let stranger = app.register("stranger@example.com").await;
+
+    let (_, mine) = app
+        .json("POST", "/api/cvs", json!({"title": "Private"}))
+        .await;
+    let cv_id = mine["id"].as_str().unwrap();
+
+    let (status, body) = app
+        .json_as(
+            Some(&stranger),
+            "POST",
+            "/api/applications",
+            json!({"company": "Acme", "role": "Engineer", "cvId": cv_id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+}
+
+// ------------------------------------------------------------------- limits
+
+#[tokio::test]
+async fn an_account_stops_at_ten_cvs() {
+    let app = TestApp::new().await;
+
+    for n in 0..rustycv_server::db::MAX_CVS {
+        let (status, _) = app
+            .json("POST", "/api/cvs", json!({"title": format!("CV {n}")}))
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "CV {n} should fit");
+    }
+
+    let (status, body) = app
+        .json("POST", "/api/cvs", json!({"title": "One too many"}))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        body["error"].as_str().unwrap().contains("10"),
+        "the refusal should name the ceiling: {body}"
+    );
+
+    // Every other way of making one is the same ceiling, not a way around it.
+    let existing = {
+        let (_, listed) = app.json("GET", "/api/cvs", json!({})).await;
+        listed[0]["id"].as_str().unwrap().to_string()
+    };
+    let (status, _) = app
+        .json("POST", &format!("/api/cvs?from={existing}"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "duplicating is still a CV");
+
+    let (status, _) = app
+        .json("POST", "/api/cvs/import", json!({"document": fixture()}))
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "importing is still a CV");
+
+    // Deleting one makes room again: the cap is a ceiling, not a quota spent.
+    app.json("DELETE", &format!("/api/cvs/{existing}"), json!({}))
+        .await;
+    let (status, _) = app.json("POST", "/api/cvs", json!({"title": "Room"})).await;
+    assert_eq!(status, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn an_account_stops_at_ten_applications() {
+    let app = TestApp::new().await;
+
+    for n in 0..rustycv_server::jobs::MAX_APPLICATIONS {
+        add(&app, &format!("Company {n}"), "wishlist").await;
+    }
+
+    let (status, body) = app
+        .json(
+            "POST",
+            "/api/applications",
+            json!({"company": "One too many", "role": "Engineer"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        body["error"].as_str().unwrap().contains("10"),
+        "the refusal should name the ceiling: {body}"
+    );
+}
+
+#[tokio::test]
+async fn the_limits_are_per_account() {
+    // A shared ceiling would mean one busy account could fill everyone else's.
+    let app = TestApp::new().await;
+    let other = app.register("other@example.com").await;
+
+    for n in 0..rustycv_server::db::MAX_CVS {
+        app.json("POST", "/api/cvs", json!({"title": format!("CV {n}")}))
+            .await;
+    }
+    assert_eq!(
+        app.json("POST", "/api/cvs", json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+
+    let (status, _) = app
+        .json_as(Some(&other), "POST", "/api/cvs", json!({"title": "Theirs"}))
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "another account still has room"
+    );
+}
+
+// --------------------------------------------------------------- rate limit
+
+/// A signed-out app whose limiter is small enough to reach the end of.
+async fn signed_out_limited_to(limit: u32) -> TestApp {
+    let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
+    let pool = rustycv_server::db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .expect("database opens");
+    let router = rustycv_server::app_with_state(rustycv_server::state::AppState {
+        pool,
+        renderer: rustycv_server::render::Renderer::new(),
+        limiter: rustycv_server::ratelimit::RateLimiter::with_limit(limit),
+    });
+
+    TestApp {
+        router,
+        path,
+        session: None,
+    }
+}
+
+async fn app_limited_to(limit: u32) -> TestApp {
+    let mut app = signed_out_limited_to(limit).await;
+    app.session = Some(app.register("owner@example.com").await);
+    app
+}
+
+#[tokio::test]
+async fn requests_past_the_limit_are_refused_with_a_retry_after() {
+    let app = app_limited_to(4).await;
+
+    // The signup was counted against the address it came from, not against the
+    // account — which did not exist yet. So the account starts with all four.
+    for n in 0..4 {
+        let (status, _) = app.json("GET", "/api/auth/me", json!({})).await;
+        assert_eq!(status, StatusCode::OK, "request {n} is within the limit");
+    }
+
+    let response = app
+        .response(
+            Request::builder()
+                .uri("/api/auth/me")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let retry_after: u64 = response.headers()[header::RETRY_AFTER]
+        .to_str()
+        .unwrap()
+        .parse()
+        .expect("Retry-After is a number of seconds");
+    assert!(
+        retry_after > 0 && retry_after <= rustycv_server::ratelimit::WINDOW.as_secs(),
+        "a refusal has to say when to come back: {retry_after}s"
+    );
+}
+
+#[tokio::test]
+async fn two_sessions_for_one_account_share_its_allowance() {
+    // Otherwise signing in again would be the way around the limit.
+    let app = app_limited_to(4).await;
+    let first = app.session.clone().unwrap();
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/login",
+            json!({"email": "owner@example.com", "password": PASSWORD}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let second = app.session.clone().unwrap();
+
+    // Four between the two of them, in any order.
+    for session in [&first, &second, &first, &second] {
+        let (status, _) = app
+            .json_as(Some(session), "GET", "/api/auth/me", json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    let (status, _) = app
+        .json_as(Some(&second), "GET", "/api/auth/me", json!({}))
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "the fresh session should not come with a fresh allowance"
+    );
+}
+
+#[tokio::test]
+async fn one_account_being_throttled_does_not_throttle_another() {
+    let app = app_limited_to(4).await;
+    let other = app.register("other@example.com").await;
+
+    for _ in 0..4 {
+        app.json("GET", "/api/auth/me", json!({})).await;
+    }
+    assert_eq!(
+        app.json("GET", "/api/auth/me", json!({})).await.0,
+        StatusCode::TOO_MANY_REQUESTS
+    );
+
+    let (status, _) = app
+        .json_as(Some(&other), "GET", "/api/auth/me", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn failed_sign_ins_are_counted_too() {
+    // The endpoint that takes a password is the one most worth flooding, and
+    // it is reached without a session — so it is counted by address instead.
+    // A limit that only applied once you were through the door would leave the
+    // door itself unguarded.
+    let app = signed_out_limited_to(3).await;
+    let wrong = json!({"email": "nobody@example.com", "password": "wrong"});
+
+    for n in 0..3 {
+        let (status, _) = app
+            .json_as(None, "POST", "/api/auth/login", wrong.clone())
+            .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "attempt {n}");
+    }
+
+    let (status, _) = app.json_as(None, "POST", "/api/auth/login", wrong).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+}
+
+// ---------------------------------------------------------------- migration
+
+#[tokio::test]
+async fn the_first_account_adopts_cvs_that_predate_accounts() {
+    // A database in use before this feature has rows nobody owns. Leaving them
+    // unowned would be indistinguishable, from the dashboard, from having lost
+    // them — so the first account created on such a database takes them on.
+    let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
+    let pool = rustycv_server::db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .expect("database opens");
+
+    // What the pre-accounts server would have written: no `user_id`.
+    sqlx::query(
+        "INSERT INTO cvs (id, title, schema_version, data, created_at, updated_at)
+         VALUES ('legacy-cv', 'From before', 1, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    )
+    .bind(FIXTURE)
+    .execute(&pool)
+    .await
+    .expect("legacy row inserts");
+    sqlx::query(
+        "INSERT INTO applications
+             (id, company, role, status, position, created_at, updated_at)
+         VALUES ('legacy-app', 'Acme', 'Engineer', 'applied', 0,
+                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    )
+    .execute(&pool)
+    .await
+    .expect("legacy card inserts");
+
+    let router = rustycv_server::app_with_state(rustycv_server::state::AppState {
+        pool,
+        renderer: rustycv_server::render::Renderer::new(),
+        limiter: rustycv_server::ratelimit::RateLimiter::new(),
+    });
+    let mut app = TestApp {
+        router,
+        path,
+        session: None,
+    };
+    app.session = Some(app.register("first@example.com").await);
+
+    let (status, cvs) = app.json("GET", "/api/cvs", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(cvs.as_array().unwrap().len(), 1, "{cvs}");
+    assert_eq!(cvs[0]["title"], "From before");
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(column(&board, "applied"), ["Acme"]);
+
+    // Only the first: a second account starts empty, or every later signup
+    // would be handed the same CVs.
+    let second = app.register("second@example.com").await;
+    let (_, cvs) = app
+        .json_as(Some(&second), "GET", "/api/cvs", json!({}))
+        .await;
+    assert_eq!(cvs.as_array().unwrap().len(), 0, "{cvs}");
 }

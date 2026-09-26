@@ -22,7 +22,7 @@ Two corollaries that are load-bearing:
 ```
 crates/rustycv-core     the document model. Pure serde, no heavy deps.
 crates/rustycv-render   Typst World, templates, fonts, PDF/PNG export
-crates/rustycv-server   axum routes, sqlx storage, seed binary
+crates/rustycv-server   axum routes, sqlx storage, accounts, seed binary
 templates/              .typ sources, embedded with include_str!
 assets/fonts, /icons    embedded with include_bytes!
 fixtures/adham.json     the reference resume `flowcv` reproduces
@@ -43,7 +43,7 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 83 tests
+cargo test --workspace              # 105 tests
 pnpm -C web test                    # 55, the rich-text conversions
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -188,12 +188,54 @@ New fields need `#[serde(default)]` so older documents keep loading. Every
 render path must survive an empty document and a blank entry of every section
 kind — there are tests for both.
 
+## Accounts
+
+Email plus an Argon2id hash, and an opaque session token in an HttpOnly cookie
+(`auth.rs`). No verification, no reset, no OAuth — each wants a mail sender this
+app does not have.
+
+**Every row belongs to an account, and the scope lives in the query.** `db.rs`
+and `jobs.rs` take a `user_id` argument and put `WHERE user_id = ?` on the
+lookup itself rather than checking ownership around it, so a query that forgets
+it is one account reading another's CVs rather than a missing guard somewhere
+else. Somebody else's id is a **404**, not a 403: whether an id exists is not a
+stranger's business. `one_account_cannot_reach_anothers_cv` and
+`..._board` pin both halves, and they were watched failing against the
+unscoped queries.
+
+`user_id` is nullable because rows written before accounts existed have no
+owner to name. **The first account created on such a database adopts them** —
+without that, an instance that had been in use comes back looking empty, which
+is indistinguishable from having lost the CVs.
+
+The caps are 10 CVs and 10 applications per account, enforced *inside* the
+`INSERT` (`INSERT ... SELECT ... WHERE (SELECT COUNT(*) ...) < ?`) so that
+counting and writing cannot race. A refusal is **409**, because nothing is
+forbidden — deleting one makes the identical request succeed.
+
+Rate limiting is 1000 requests an hour per key, fixed window, in memory
+(`ratelimit.rs`). The key is the account when there is one and the peer address
+otherwise, which is why `resolve_session` runs *before* `rate_limit` and
+`require_auth` runs *after* it: signed-in callers are limited per account rather
+than per network, and an unauthenticated flood is still counted rather than
+being rejected for free. **`X-Forwarded-For` is deliberately not read** — a
+header the client writes is a limit the client opts out of. `main.rs` serves
+with `into_make_service_with_connect_info`, without which every anonymous
+caller shares one bucket.
+
+The limit is a field on `RateLimiter`, not a read of the constant, so a test can
+build one it can reach the end of. Argon2 is pinned to `opt-level = 3` in dev
+builds (root `Cargo.toml`) — unoptimized it costs seconds per hash and would
+dominate the suite, and tuning the cost down for the tests' sake is the wrong
+fix.
+
 ## Scope
 
-No auth: single implicit local user, and `CorsLayer::permissive()` in debug
-builds. Fine on localhost, not safe to expose. The binary binds `127.0.0.1`
-unless `HOST` says otherwise, which is the one guard here — the Docker image
-overrides it to `0.0.0.0` because a container that binds loopback is
-unreachable, so anything that publishes that port is publishing every CV. Users never author Typst — they
-pick a template and turn theme knobs — so don't add a raw-Typst escape hatch
-without sandboxing the compile.
+Accounts, but no TLS, and `CorsLayer::permissive()` still in debug builds. The
+cookie crosses the wire in the clear, so the binary still binds `127.0.0.1`
+unless `HOST` says otherwise — the Docker image overrides it to `0.0.0.0`
+because a container that binds loopback is unreachable, so anything publishing
+that port wants a TLS terminator in front, and `Secure` on the cookie with it.
+
+Users never author Typst — they pick a template and turn theme knobs — so don't
+add a raw-Typst escape hatch without sandboxing the compile.

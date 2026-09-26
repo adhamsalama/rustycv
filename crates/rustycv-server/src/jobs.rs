@@ -11,6 +11,11 @@ use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
 
+/// How many applications one account may track. Enforced the same way the CV
+/// cap is: inside the `INSERT`, so the count cannot go stale between checking
+/// it and writing the row.
+pub const MAX_APPLICATIONS: usize = 10;
+
 /// The board's columns, in the order they are drawn.
 ///
 /// A closed set on purpose: user-defined columns would mean storing a column
@@ -150,15 +155,23 @@ fn now() -> String {
 }
 
 /// An empty selection in the CV picker arrives as `""`, which is not a CV id.
-async fn linked_cv(pool: &SqlitePool, cv_id: Option<String>) -> ApiResult<Option<String>> {
+///
+/// Scoped to the account: linking to somebody else's CV would put their title
+/// on this board through the join in `SELECT`.
+async fn linked_cv(
+    pool: &SqlitePool,
+    user_id: &str,
+    cv_id: Option<String>,
+) -> ApiResult<Option<String>> {
     let Some(id) = cv_id.filter(|id| !id.trim().is_empty()) else {
         return Ok(None);
     };
 
     // Checked here rather than left to the foreign key, so a stale id is a 400
     // naming the problem instead of a 500 from a constraint violation.
-    let exists = sqlx::query("SELECT 1 FROM cvs WHERE id = ?")
+    let exists = sqlx::query("SELECT 1 FROM cvs WHERE id = ? AND user_id = ?")
         .bind(&id)
+        .bind(user_id)
         .fetch_optional(pool)
         .await?
         .is_some();
@@ -170,16 +183,20 @@ async fn linked_cv(pool: &SqlitePool, cv_id: Option<String>) -> ApiResult<Option
 }
 
 /// The whole board, in board order. Columns are grouped by the client.
-pub async fn list(pool: &SqlitePool) -> ApiResult<Vec<Application>> {
-    let rows = sqlx::query(&format!("{SELECT} ORDER BY a.position, a.created_at"))
-        .fetch_all(pool)
-        .await?;
+pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<Application>> {
+    let rows = sqlx::query(&format!(
+        "{SELECT} WHERE a.user_id = ? ORDER BY a.position, a.created_at"
+    ))
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
     Ok(rows.into_iter().map(row_to_application).collect())
 }
 
-pub async fn get(pool: &SqlitePool, id: &str) -> ApiResult<Application> {
-    let row = sqlx::query(&format!("{SELECT} WHERE a.id = ?"))
+pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Application> {
+    let row = sqlx::query(&format!("{SELECT} WHERE a.id = ? AND a.user_id = ?"))
         .bind(id)
+        .bind(user_id)
         .fetch_optional(pool)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -187,33 +204,51 @@ pub async fn get(pool: &SqlitePool, id: &str) -> ApiResult<Application> {
 }
 
 /// New cards land at the foot of their column, where the "Add" control is.
-pub async fn create(pool: &SqlitePool, input: ApplicationInput) -> ApiResult<Application> {
+pub async fn create(
+    pool: &SqlitePool,
+    user_id: &str,
+    input: ApplicationInput,
+) -> ApiResult<Application> {
     let id = Uuid::new_v4().to_string();
     let ts = now();
     let status = input.status()?;
-    let cv_id = linked_cv(pool, input.cv_id).await?;
+    let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 
-    sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO applications
-             (id, company, role, url, notes, status, position, cv_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?,
-                 (SELECT COALESCE(MAX(position), -1) + 1 FROM applications WHERE status = ?),
-                 ?, ?, ?)",
+             (id, user_id, company, role, url, notes, status, position, cv_id,
+              created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?,
+                (SELECT COALESCE(MAX(position), -1) + 1
+                 FROM applications WHERE user_id = ? AND status = ?),
+                ?, ?, ?
+         WHERE (SELECT COUNT(*) FROM applications WHERE user_id = ?) < ?",
     )
     .bind(&id)
+    .bind(user_id)
     .bind(input.company.trim())
     .bind(input.role.trim())
     .bind(input.url.trim())
     .bind(&input.notes)
     .bind(status.as_str())
+    .bind(user_id)
     .bind(status.as_str())
     .bind(&cv_id)
     .bind(&ts)
     .bind(&ts)
+    .bind(user_id)
+    .bind(MAX_APPLICATIONS as i64)
     .execute(pool)
-    .await?;
+    .await?
+    .rows_affected();
 
-    get(pool, &id).await
+    if inserted == 0 {
+        return Err(ApiError::LimitReached(format!(
+            "you are already tracking {MAX_APPLICATIONS} applications — delete one to make room"
+        )));
+    }
+
+    get(pool, user_id, &id).await
 }
 
 /// Edit a card's contents. Changing the status here is the keyboard route
@@ -221,17 +256,18 @@ pub async fn create(pool: &SqlitePool, input: ApplicationInput) -> ApiResult<App
 /// of the column it moved to, exactly where a new card would.
 pub async fn update(
     pool: &SqlitePool,
+    user_id: &str,
     id: &str,
     input: ApplicationInput,
 ) -> ApiResult<Application> {
-    let current = get(pool, id).await?;
+    let current = get(pool, user_id, id).await?;
     let status = input.status()?;
-    let cv_id = linked_cv(pool, input.cv_id).await?;
+    let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 
     sqlx::query(
         "UPDATE applications
          SET company = ?, role = ?, url = ?, notes = ?, status = ?, cv_id = ?, updated_at = ?
-         WHERE id = ?",
+         WHERE id = ? AND user_id = ?",
     )
     .bind(input.company.trim())
     .bind(input.role.trim())
@@ -241,6 +277,7 @@ pub async fn update(
     .bind(&cv_id)
     .bind(now())
     .bind(id)
+    .bind(user_id)
     .execute(pool)
     .await?;
 
@@ -250,9 +287,11 @@ pub async fn update(
         sqlx::query(
             "UPDATE applications
              SET position = (SELECT COALESCE(MAX(position), -1) + 1
-                             FROM applications WHERE status = ? AND id <> ?)
+                             FROM applications
+                             WHERE user_id = ? AND status = ? AND id <> ?)
              WHERE id = ?",
         )
+        .bind(user_id)
         .bind(status.as_str())
         .bind(id)
         .bind(id)
@@ -260,7 +299,7 @@ pub async fn update(
         .await?;
     }
 
-    get(pool, id).await
+    get(pool, user_id, id).await
 }
 
 /// Drop a card into `status` at `index`, the way a drag leaves it.
@@ -270,27 +309,30 @@ pub async fn update(
 /// leaves the server.
 pub async fn move_to(
     pool: &SqlitePool,
+    user_id: &str,
     id: &str,
     status: Status,
     index: usize,
 ) -> ApiResult<Application> {
     // Fail before opening a transaction if the card is gone.
-    get(pool, id).await?;
+    get(pool, user_id, id).await?;
 
     let mut tx = pool.begin().await?;
 
-    sqlx::query("UPDATE applications SET status = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?")
         .bind(status.as_str())
         .bind(now())
         .bind(id)
+        .bind(user_id)
         .execute(&mut *tx)
         .await?;
 
     let mut ids: Vec<String> = sqlx::query_scalar(
         "SELECT id FROM applications
-         WHERE status = ? AND id <> ?
+         WHERE user_id = ? AND status = ? AND id <> ?
          ORDER BY position, created_at",
     )
+    .bind(user_id)
     .bind(status.as_str())
     .bind(id)
     .fetch_all(&mut *tx)
@@ -309,12 +351,13 @@ pub async fn move_to(
     }
 
     tx.commit().await?;
-    get(pool, id).await
+    get(pool, user_id, id).await
 }
 
-pub async fn delete(pool: &SqlitePool, id: &str) -> ApiResult<()> {
-    let affected = sqlx::query("DELETE FROM applications WHERE id = ?")
+pub async fn delete(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<()> {
+    let affected = sqlx::query("DELETE FROM applications WHERE id = ? AND user_id = ?")
         .bind(id)
+        .bind(user_id)
         .execute(pool)
         .await?
         .rows_affected();

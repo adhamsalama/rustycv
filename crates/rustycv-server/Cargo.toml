@@ -24,6 +24,12 @@ tower = "0.5"
 tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate", "chrono"] }
 chrono = { version = "0.4", features = ["serde"] }
+argon2 = "0.5"
+# The OS entropy behind both the password salts and the session tokens. Taken
+# directly rather than through argon2's optional RNG feature, so there is one
+# source of randomness here instead of two that have to agree.
+getrandom = "0.4"
+
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

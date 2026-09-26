@@ -23,3 +23,13 @@ uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 anyhow = "1"
 tracing = "0.1"
+
+# Argon2 is meant to be slow, and unoptimized it is slow enough to dominate a
+# test run — seconds per hash rather than tens of milliseconds. Optimizing just
+# these two in dev builds keeps the cost parameters honest instead of tuning
+# them down for the sake of the suite.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3

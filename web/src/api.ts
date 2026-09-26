@@ -7,6 +7,7 @@ import type {
   CvSummary,
   Diagnostic,
   TemplateInfo,
+  User,
 } from './types'
 
 /** An API error that carries the server's Typst diagnostics when it has them. */
@@ -46,6 +47,17 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 export const api = {
+  /**
+   * Who is signed in. A 401 is the normal answer for a signed-out visitor, not
+   * a failure — `AuthGate` turns it into the login form.
+   */
+  me: () => request<User>('/auth/me'),
+  signup: (email: string, password: string) =>
+    request<User>('/auth/signup', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  login: (email: string, password: string) =>
+    request<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }),
+
   templates: () => request<TemplateInfo[]>('/templates'),
   fonts: () => request<string[]>('/fonts'),
 

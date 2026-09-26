@@ -341,3 +341,40 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   .editor-body { grid-template-columns: 180px 1fr; }
   .preview-pane { display: none; }
 }
+
+/* --------------------------------------------------------------- accounts */
+
+.auth-page { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+.auth-corner { position: fixed; top: 16px; right: 16px; }
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.auth-card h1 { margin: 0; }
+/* The blurb sits tighter to the heading than to the fields below it. */
+.auth-card > p.muted { margin: -8px 0 4px; }
+.auth-card .primary { justify-content: center; margin-top: 4px; }
+.auth-switch { justify-content: center; font-size: 12px; }
+
+.auth-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+}
+
+.account-menu { display: flex; align-items: center; gap: 8px; }
+/* Long addresses truncate rather than pushing the buttons off the header. */
+.account-email { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

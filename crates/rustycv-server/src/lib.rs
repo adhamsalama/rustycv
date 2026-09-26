@@ -1,6 +1,9 @@
+pub mod auth;
 pub mod db;
 pub mod error;
 pub mod jobs;
+pub mod middleware;
+pub mod ratelimit;
 pub mod render;
 pub mod routes;
 pub mod state;
@@ -19,13 +22,32 @@ pub async fn build_app(database_url: &str) -> anyhow::Result<Router> {
     let state = AppState {
         pool,
         renderer: render::Renderer::new(),
+        limiter: ratelimit::RateLimiter::new(),
     };
     Ok(app_with_state(state))
 }
 
 pub fn app_with_state(state: AppState) -> Router {
+    // Outermost first, because each `.layer` wraps what is already there:
+    // resolve the session, then count the request against whoever it turned
+    // out to be, then let the router decide whether that is enough.
+    //
+    // Counting *after* the session lookup is what lets a signed-in caller be
+    // limited by account rather than by the address they dialled from; doing
+    // it before `require_auth` is what keeps an unauthenticated flood from
+    // being free.
+    let api = routes::router()
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::resolve_session,
+        ));
+
     let mut app = Router::new()
-        .nest("/api", routes::router())
+        .nest("/api", api)
         .with_state(state)
         .layer(TraceLayer::new_for_http());
 

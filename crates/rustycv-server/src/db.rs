@@ -1,4 +1,9 @@
 //! Storage. One table, one JSON document per CV.
+//!
+//! Every read and write is scoped to an account. The scope is a `user_id`
+//! argument rather than something a caller can forget: a query here that does
+//! not mention it is one account reading another's CVs, so `WHERE user_id = ?`
+//! sits on the lookup itself and not on a check around it.
 
 use rustycv_core::CvDocument;
 use serde::Serialize;
@@ -7,6 +12,12 @@ use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
+
+/// How many CVs one account may keep.
+///
+/// Enforced in the `INSERT` rather than by counting first and inserting after,
+/// so two requests arriving together cannot both find room for the tenth.
+pub const MAX_CVS: usize = 10;
 
 pub async fn connect(url: &str) -> anyhow::Result<SqlitePool> {
     let options: SqliteConnectOptions = url
@@ -53,7 +64,7 @@ fn now() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-pub async fn list(pool: &SqlitePool) -> ApiResult<Vec<CvSummary>> {
+pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>> {
     // `json_extract` keeps the listing cheap: the dashboard never has to
     // deserialize a full document just to draw a card.
     let rows = sqlx::query(
@@ -65,9 +76,11 @@ pub async fn list(pool: &SqlitePool) -> ApiResult<Vec<CvSummary>> {
                created_at,
                updated_at
         FROM cvs
+        WHERE user_id = ?
         ORDER BY updated_at DESC
         "#,
     )
+    .bind(user_id)
     .fetch_all(pool)
     .await?;
 
@@ -84,12 +97,19 @@ pub async fn list(pool: &SqlitePool) -> ApiResult<Vec<CvSummary>> {
         .collect())
 }
 
-pub async fn get(pool: &SqlitePool, id: &str) -> ApiResult<Cv> {
-    let row = sqlx::query("SELECT id, title, data, created_at, updated_at FROM cvs WHERE id = ?")
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(ApiError::NotFound)?;
+/// One CV, if it belongs to this account.
+///
+/// Somebody else's id is `NotFound` rather than a 403: whether an id exists at
+/// all is not this account's business.
+pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
+    let row = sqlx::query(
+        "SELECT id, title, data, created_at, updated_at FROM cvs WHERE id = ? AND user_id = ?",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
 
     let data: String = row.get("data");
     Ok(Cv {
@@ -101,29 +121,49 @@ pub async fn get(pool: &SqlitePool, id: &str) -> ApiResult<Cv> {
     })
 }
 
-pub async fn create(pool: &SqlitePool, title: &str, document: &CvDocument) -> ApiResult<Cv> {
+pub async fn create(
+    pool: &SqlitePool,
+    user_id: &str,
+    title: &str,
+    document: &CvDocument,
+) -> ApiResult<Cv> {
     let id = Uuid::new_v4().to_string();
     let ts = now();
     let data = serde_json::to_string(document)?;
 
-    sqlx::query(
-        "INSERT INTO cvs (id, title, schema_version, data, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
+    // `INSERT ... SELECT ... WHERE` so the count and the write are one
+    // statement: the row appears only if there was room for it at the moment
+    // it was written, and no row written means the account is full.
+    let inserted = sqlx::query(
+        "INSERT INTO cvs (id, user_id, title, schema_version, data, created_at, updated_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+         WHERE (SELECT COUNT(*) FROM cvs WHERE user_id = ?) < ?",
     )
     .bind(&id)
+    .bind(user_id)
     .bind(title)
     .bind(document.schema_version as i64)
     .bind(&data)
     .bind(&ts)
     .bind(&ts)
+    .bind(user_id)
+    .bind(MAX_CVS as i64)
     .execute(pool)
-    .await?;
+    .await?
+    .rows_affected();
 
-    get(pool, &id).await
+    if inserted == 0 {
+        return Err(ApiError::LimitReached(format!(
+            "you already have {MAX_CVS} CVs — delete one to make room"
+        )));
+    }
+
+    get(pool, user_id, &id).await
 }
 
 pub async fn update(
     pool: &SqlitePool,
+    user_id: &str,
     id: &str,
     title: Option<&str>,
     document: &CvDocument,
@@ -132,13 +172,14 @@ pub async fn update(
     let affected = sqlx::query(
         "UPDATE cvs
          SET data = ?, schema_version = ?, title = COALESCE(?, title), updated_at = ?
-         WHERE id = ?",
+         WHERE id = ? AND user_id = ?",
     )
     .bind(&data)
     .bind(document.schema_version as i64)
     .bind(title)
     .bind(now())
     .bind(id)
+    .bind(user_id)
     .execute(pool)
     .await?
     .rows_affected();
@@ -146,12 +187,13 @@ pub async fn update(
     if affected == 0 {
         return Err(ApiError::NotFound);
     }
-    get(pool, id).await
+    get(pool, user_id, id).await
 }
 
-pub async fn delete(pool: &SqlitePool, id: &str) -> ApiResult<()> {
-    let affected = sqlx::query("DELETE FROM cvs WHERE id = ?")
+pub async fn delete(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<()> {
+    let affected = sqlx::query("DELETE FROM cvs WHERE id = ? AND user_id = ?")
         .bind(id)
+        .bind(user_id)
         .execute(pool)
         .await?
         .rows_affected();

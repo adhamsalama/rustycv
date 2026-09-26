@@ -34,6 +34,13 @@ export interface Theme {
   bulletStyle: BulletStyle
 }
 
+/** The signed-in account. Mirrors `auth::User` — never carries the hash. */
+export interface User {
+  id: string
+  email: string
+  createdAt: string
+}
+
 export interface Link {
   id: string
   label: string

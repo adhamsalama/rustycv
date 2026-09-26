@@ -1,4 +1,4 @@
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use rustycv_render::{Diagnostic, RenderError};
@@ -10,6 +10,18 @@ pub enum ApiError {
     NotFound,
     #[error("{0}")]
     BadRequest(String),
+    #[error("sign in to continue")]
+    Unauthorized,
+    #[error("that email and password do not match an account")]
+    InvalidCredentials,
+    /// One of the per-account caps. Carries its own sentence because "you have
+    /// 10 CVs" and "you have 10 applications" are different ceilings.
+    #[error("{0}")]
+    LimitReached(String),
+    #[error("too many requests — try again in {retry_after}s")]
+    RateLimited { retry_after: u64 },
+    #[error("internal error")]
+    Internal,
     #[error(transparent)]
     Render(#[from] RenderError),
     #[error(transparent)]
@@ -30,9 +42,28 @@ struct ErrorBody {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        // A refusal has to say how long for, or the client can only guess and
+        // poll. Carried alongside because the body is JSON like every other
+        // error and this belongs in a header.
+        let retry_after = match self {
+            ApiError::RateLimited { retry_after } => Some(retry_after),
+            _ => None,
+        };
+
         let (status, message, diagnostics) = match self {
             ApiError::NotFound => (StatusCode::NOT_FOUND, self.to_string(), vec![]),
             ApiError::BadRequest(ref m) => (StatusCode::BAD_REQUEST, m.clone(), vec![]),
+            ApiError::Unauthorized | ApiError::InvalidCredentials => {
+                (StatusCode::UNAUTHORIZED, self.to_string(), vec![])
+            }
+            // 409 rather than 403: nothing is forbidden about the request, the
+            // account is simply already at the ceiling, and deleting something
+            // makes the identical request succeed.
+            ApiError::LimitReached(ref m) => (StatusCode::CONFLICT, m.clone(), vec![]),
+            ApiError::RateLimited { .. } => {
+                (StatusCode::TOO_MANY_REQUESTS, self.to_string(), vec![])
+            }
+            ApiError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string(), vec![]),
             ApiError::Json(ref e) => (StatusCode::BAD_REQUEST, e.to_string(), vec![]),
             ApiError::Render(RenderError::UnknownTemplate(ref t)) => (
                 StatusCode::BAD_REQUEST,
@@ -58,14 +89,22 @@ impl IntoResponse for ApiError {
             }
         };
 
-        (
+        let mut response = (
             status,
             Json(ErrorBody {
                 error: message,
                 diagnostics,
             }),
         )
-            .into_response()
+            .into_response();
+
+        if let Some(seconds) = retry_after {
+            if let Ok(value) = seconds.to_string().parse() {
+                response.headers_mut().insert(header::RETRY_AFTER, value);
+            }
+        }
+
+        response
     }
 }
 

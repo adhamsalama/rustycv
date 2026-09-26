@@ -21,6 +21,7 @@ import { api } from '../api'
 import { applyMove, columnId, dropTarget, groupByStatus } from '../board'
 import { STATUS_COLUMNS } from '../types'
 import type { Application, ApplicationInput, ApplicationStatus, CvSummary } from '../types'
+import { AccountMenu } from '../components/AccountMenu'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { JobCard } from '../components/JobCard'
 
@@ -34,6 +35,7 @@ const QUERY_KEY = ['applications']
 export function Board() {
   const queryClient = useQueryClient()
   const [overStatus, setOverStatus] = useState<ApplicationStatus | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const { data: applications = [], isLoading } = useQuery({
     queryKey: QUERY_KEY,
@@ -43,13 +45,23 @@ export function Board() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: QUERY_KEY })
 
-  const create = useMutation({ mutationFn: api.createApplication, onSuccess: refresh })
+  const onError = (failure: Error) => setError(failure.message)
+
+  const create = useMutation({
+    mutationFn: api.createApplication,
+    onSuccess: () => {
+      setError(null)
+      return refresh()
+    },
+    onError,
+  })
   const save = useMutation({
     mutationFn: ({ id, input }: { id: string; input: ApplicationInput }) =>
       api.updateApplication(id, input),
     onSuccess: refresh,
+    onError,
   })
-  const remove = useMutation({ mutationFn: api.deleteApplication, onSuccess: refresh })
+  const remove = useMutation({ mutationFn: api.deleteApplication, onSuccess: refresh, onError })
 
   /**
    * A drop is applied to the cache first and confirmed afterwards. Waiting for
@@ -97,12 +109,21 @@ export function Board() {
           </p>
         </div>
         <div className="dashboard-actions">
+          <AccountMenu />
           <AppearanceToggle />
           <Link className="secondary" to="/">
             CVs
           </Link>
         </div>
       </header>
+
+      {/* Where a refused card lands — the 10-application cap, or a card
+          pointing at a CV that is no longer there. */}
+      {error ? (
+        <p className="badge badge-error" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       {isLoading ? <p className="muted">Loading…</p> : null}
 
