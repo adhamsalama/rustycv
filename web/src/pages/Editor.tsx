@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api'
 import { useCvStore } from '../store'
@@ -14,6 +14,42 @@ import { PdfPreview } from '../components/PdfPreview'
 import { SortableList, SortableRow } from '../components/Sortable'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
+
+/**
+ * Which pane is open, kept in the URL rather than in component state so a
+ * refresh comes back to the section you were editing instead of to Details.
+ *
+ * One parameter carries all three cases: a section's id is a UUID, so it can
+ * never collide with the two literals.
+ */
+function usePane(): [Pane, (pane: Pane) => void] {
+  const [params, setParams] = useSearchParams()
+  const value = params.get('pane') ?? 'details'
+
+  const pane: Pane =
+    value === 'details' || value === 'design' ? { kind: value } : { kind: 'section', id: value }
+
+  const setPane = useCallback(
+    (next: Pane) => {
+      setParams(
+        (previous) => {
+          const updated = new URLSearchParams(previous)
+          // Details is the default, so it stays out of the URL entirely.
+          if (next.kind === 'details') updated.delete('pane')
+          else updated.set('pane', next.kind === 'design' ? 'design' : next.id)
+          return updated
+        },
+        // Replace rather than push: switching panes is not a navigation, and
+        // pushing would make Back walk every section you had opened before it
+        // finally left the editor.
+        { replace: true },
+      )
+    },
+    [setParams],
+  )
+
+  return [pane, setPane]
+}
 
 /**
  * How long the editor must be idle before the document is worth a round trip.
@@ -41,7 +77,7 @@ export function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.id])
 
-  const [pane, setPane] = useState<Pane>({ kind: 'details' })
+  const [pane, setPane] = usePane()
   const { state: saveState, renderAt } = useAutosave(id, revision)
 
   if (isLoading) return <main className="centered">Loading…</main>
