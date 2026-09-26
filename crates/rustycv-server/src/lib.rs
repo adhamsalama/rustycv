@@ -1,5 +1,6 @@
 pub mod db;
 pub mod error;
+pub mod jobs;
 pub mod render;
 pub mod routes;
 pub mod state;

@@ -90,6 +90,41 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 .cv-card-main p { margin: 4px 0 0; }
 .cv-card-actions { display: flex; gap: 4px; padding: 8px; border-top: 1px solid var(--border); }
 
+/* --------------------------------------------------------- job tracker */
+
+.board-page { max-width: 1400px; margin: 0 auto; padding: 32px 20px 64px; }
+
+/* Fixed-width columns that scroll sideways rather than squeezing: a card
+   narrower than its company name is worse than a scrollbar. */
+.board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
+
+.board-column { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-width: 0; }
+/* The column a drag would land in, including the one it started from. */
+.board-column.target { border-color: var(--accent); background: var(--accent-soft); }
+.board-column-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.board-column-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+/* Keeps an empty column a drop target rather than a line. */
+.board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 60px; }
+
+.job-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px 10px; }
+.job-card.dragging { opacity: 0.6; }
+.job-card.editing { display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.job-card-head { display: flex; align-items: flex-start; gap: 2px; }
+.job-card-title { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: transparent; border: none; color: var(--text); padding: 2px 4px; border-radius: 4px; }
+.job-card-title:hover { background: var(--hover); }
+.job-card-notes { margin: 6px 2px 0; color: var(--muted); white-space: pre-wrap; }
+.job-card-foot { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.job-card-foot:empty { display: none; }
+.job-card-foot .pill { margin-left: 0; color: var(--muted); }
+.job-card-foot a.pill:hover { color: var(--accent); border-color: var(--accent); }
+.job-card-actions { display: flex; align-items: center; gap: 4px; }
+
+.board-add { justify-content: flex-start; margin: 0 6px 6px; }
+.board-add-form { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+.board-add-form input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
+.board-add-form input:focus { outline: 2px solid var(--focus-ring); outline-offset: -1px; border-color: var(--accent); }
+.board-add-actions { display: flex; gap: 4px; }
+
 /* -------------------------------------------------------------- editor */
 
 .editor { height: 100vh; display: flex; flex-direction: column; }

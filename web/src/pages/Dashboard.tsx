@@ -48,6 +48,9 @@ export function Dashboard() {
         </div>
         <div className="dashboard-actions">
           <AppearanceToggle />
+          <Link className="ghost" to="/jobs">
+            Job tracker
+          </Link>
           <button type="button" className="ghost" onClick={() => fileInput.current?.click()}>
             Import JSON
           </button>

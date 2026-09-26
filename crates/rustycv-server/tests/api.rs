@@ -285,3 +285,166 @@ async fn hostile_theme_values_do_not_break_rendering() {
     assert_eq!(status, StatusCode::OK, "clamped theme should still render");
     assert!(bytes.starts_with(b"%PDF"));
 }
+
+// ---------------------------------------------------------------- job board
+
+/// Company names in board order, per column.
+fn column(board: &Value, status: &str) -> Vec<String> {
+    board
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|a| a["status"] == status)
+        .map(|a| a["company"].as_str().unwrap().to_string())
+        .collect()
+}
+
+async fn add(app: &TestApp, company: &str, status: &str) -> String {
+    let (status_code, created) = app
+        .json(
+            "POST",
+            "/api/applications",
+            json!({"company": company, "role": "Engineer", "status": status}),
+        )
+        .await;
+    assert_eq!(status_code, StatusCode::CREATED);
+    created["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn cards_stack_up_in_the_column_they_were_added_to() {
+    let app = TestApp::new().await;
+    add(&app, "Acme", "wishlist").await;
+    add(&app, "Globex", "wishlist").await;
+    add(&app, "Initech", "applied").await;
+
+    let (status, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(column(&board, "wishlist"), ["Acme", "Globex"]);
+    assert_eq!(column(&board, "applied"), ["Initech"]);
+}
+
+#[tokio::test]
+async fn a_dragged_card_lands_where_it_was_dropped() {
+    let app = TestApp::new().await;
+    add(&app, "Acme", "applied").await;
+    add(&app, "Globex", "applied").await;
+    let initech = add(&app, "Initech", "wishlist").await;
+
+    // Dropped onto the *first* card of another column, not appended to it.
+    let (status, moved) = app
+        .json(
+            "POST",
+            &format!("/api/applications/{initech}/move"),
+            json!({"status": "applied", "index": 0}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(moved["status"], "applied");
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(column(&board, "applied"), ["Initech", "Acme", "Globex"]);
+    assert!(column(&board, "wishlist").is_empty());
+
+    // Reordering inside one column, and an index past the end meaning "last".
+    app.json(
+        "POST",
+        &format!("/api/applications/{initech}/move"),
+        json!({"status": "applied", "index": 99}),
+    )
+    .await;
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(column(&board, "applied"), ["Acme", "Globex", "Initech"]);
+}
+
+#[tokio::test]
+async fn editing_the_status_moves_the_card_to_the_end_of_its_new_column() {
+    let app = TestApp::new().await;
+    add(&app, "Acme", "interview").await;
+    let globex = add(&app, "Globex", "wishlist").await;
+
+    let (status, updated) = app
+        .json(
+            "PUT",
+            &format!("/api/applications/{globex}"),
+            json!({"company": "Globex", "role": "Staff Engineer", "status": "interview"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["role"], "Staff Engineer");
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(column(&board, "interview"), ["Acme", "Globex"]);
+}
+
+#[tokio::test]
+async fn a_card_names_the_cv_it_was_sent_with_and_outlives_it() {
+    let app = TestApp::new().await;
+    let (_, cv) = app
+        .json("POST", "/api/cvs", json!({"title": "Backend roles"}))
+        .await;
+    let cv_id = cv["id"].as_str().unwrap().to_string();
+
+    let (status, created) = app
+        .json(
+            "POST",
+            "/api/applications",
+            json!({"company": "Acme", "role": "Engineer", "status": "applied", "cvId": cv_id}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(created["cvTitle"], "Backend roles");
+
+    // Deleting the CV must not delete the history of having applied with it.
+    app.json("DELETE", &format!("/api/cvs/{cv_id}"), json!({}))
+        .await;
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert_eq!(board.as_array().unwrap().len(), 1);
+    assert_eq!(board[0]["cvId"], Value::Null);
+    assert_eq!(board[0]["cvTitle"], Value::Null);
+}
+
+#[tokio::test]
+async fn an_unknown_column_or_cv_is_rejected_rather_than_stored() {
+    let app = TestApp::new().await;
+
+    let (status, _) = app
+        .json(
+            "POST",
+            "/api/applications",
+            json!({"company": "Acme", "role": "Engineer", "status": "ghosted"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, body) = app
+        .json(
+            "POST",
+            "/api/applications",
+            json!({"company": "Acme", "role": "Engineer", "cvId": "not-a-cv"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("not-a-cv"));
+}
+
+#[tokio::test]
+async fn deleting_a_card_removes_it_from_the_board() {
+    let app = TestApp::new().await;
+    let id = add(&app, "Acme", "rejected").await;
+
+    let (status, _) = app
+        .json("DELETE", &format!("/api/applications/{id}"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (_, board) = app.json("GET", "/api/applications", json!({})).await;
+    assert!(board.as_array().unwrap().is_empty());
+
+    let (status, _) = app
+        .json("DELETE", &format!("/api/applications/{id}"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

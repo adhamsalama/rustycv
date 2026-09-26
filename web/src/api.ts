@@ -1,4 +1,13 @@
-import type { Cv, CvDocument, CvSummary, Diagnostic, TemplateInfo } from './types'
+import type {
+  Application,
+  ApplicationInput,
+  ApplicationStatus,
+  Cv,
+  CvDocument,
+  CvSummary,
+  Diagnostic,
+  TemplateInfo,
+} from './types'
 
 /** An API error that carries the server's Typst diagnostics when it has them. */
 export class ApiError extends Error {
@@ -51,6 +60,19 @@ export const api = {
   deleteCv: (id: string) => request<void>(`/cvs/${id}`, { method: 'DELETE' }),
   importCv: (document: CvDocument, title?: string) =>
     request<Cv>('/cvs/import', { method: 'POST', body: JSON.stringify({ title, document }) }),
+
+  listApplications: () => request<Application[]>('/applications'),
+  createApplication: (input: Partial<ApplicationInput>) =>
+    request<Application>('/applications', { method: 'POST', body: JSON.stringify(input) }),
+  updateApplication: (id: string, input: ApplicationInput) =>
+    request<Application>(`/applications/${id}`, { method: 'PUT', body: JSON.stringify(input) }),
+  /** Where a drag ended: which column, and where in it. */
+  moveApplication: (id: string, status: ApplicationStatus, index: number) =>
+    request<Application>(`/applications/${id}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ status, index }),
+    }),
+  deleteApplication: (id: string) => request<void>(`/applications/${id}`, { method: 'DELETE' }),
 
   /**
    * Render whatever is currently in the editor, saved or not.

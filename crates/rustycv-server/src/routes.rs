@@ -2,13 +2,14 @@ use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use rustycv_core::CvDocument;
 use serde::{Deserialize, Serialize};
 
 use crate::db;
 use crate::error::{ApiError, ApiResult};
+use crate::jobs::{self, Application, ApplicationInput, Status};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -21,6 +22,15 @@ pub fn router() -> Router<AppState> {
         .route("/cvs/{id}", get(get_cv).put(update_cv).delete(delete_cv))
         .route("/cvs/{id}/pdf", get(download_pdf))
         .route("/cvs/{id}/export", get(export_cv))
+        .route(
+            "/applications",
+            get(list_applications).post(create_application),
+        )
+        .route(
+            "/applications/{id}",
+            put(update_application).delete(delete_application),
+        )
+        .route("/applications/{id}/move", post(move_application))
 }
 
 // ------------------------------------------------------------------ metadata
@@ -245,4 +255,57 @@ async fn import_cv(
 
     let cv = db::create(&state.pool, &title, &document).await?;
     Ok((StatusCode::CREATED, Json(cv)))
+}
+
+// -------------------------------------------------------------- job tracker
+
+async fn list_applications(State(state): State<AppState>) -> ApiResult<Json<Vec<Application>>> {
+    Ok(Json(jobs::list(&state.pool).await?))
+}
+
+async fn create_application(
+    State(state): State<AppState>,
+    Json(input): Json<ApplicationInput>,
+) -> ApiResult<(StatusCode, Json<Application>)> {
+    let application = jobs::create(&state.pool, input).await?;
+    Ok((StatusCode::CREATED, Json(application)))
+}
+
+async fn update_application(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(input): Json<ApplicationInput>,
+) -> ApiResult<Json<Application>> {
+    Ok(Json(jobs::update(&state.pool, &id, input).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MoveBody {
+    status: String,
+    /// Where in the destination column the card was dropped. Past the end of
+    /// the column means last.
+    index: usize,
+}
+
+/// Where a drag ends. Separate from the update above because it is the only
+/// call that reorders a column, and because a drag carries no field edits — so
+/// a card being dragged while its form is open cannot write stale text back.
+async fn move_application(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<MoveBody>,
+) -> ApiResult<Json<Application>> {
+    let status = Status::from_wire(&body.status)?;
+    Ok(Json(
+        jobs::move_to(&state.pool, &id, status, body.index).await?,
+    ))
+}
+
+async fn delete_application(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<StatusCode> {
+    jobs::delete(&state.pool, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

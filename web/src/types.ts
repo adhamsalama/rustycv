@@ -119,6 +119,43 @@ export interface Cv {
   document: CvDocument
 }
 
+// ---------------------------------------------------------- job tracker
+
+export type ApplicationStatus = 'wishlist' | 'applied' | 'interview' | 'offer' | 'rejected'
+
+/**
+ * The board's columns, in the order they are drawn. A closed set, matching
+ * `Status` in `crates/rustycv-server/src/jobs.rs` — the server rejects
+ * anything else.
+ */
+export const STATUS_COLUMNS: { status: ApplicationStatus; label: string }[] = [
+  { status: 'wishlist', label: 'Wishlist' },
+  { status: 'applied', label: 'Applied' },
+  { status: 'interview', label: 'Interview' },
+  { status: 'offer', label: 'Offer' },
+  { status: 'rejected', label: 'Closed' },
+]
+
+export interface Application {
+  id: string
+  company: string
+  role: string
+  url: string
+  notes: string
+  status: ApplicationStatus
+  /** The CV this was sent with, if one was. Null once that CV is deleted. */
+  cvId: string | null
+  cvTitle: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** A card's own fields. Where it sits in its column is the server's business. */
+export type ApplicationInput = Pick<
+  Application,
+  'company' | 'role' | 'url' | 'notes' | 'status' | 'cvId'
+>
+
 /** The spacing a template is designed around — where "reset design" lands. */
 export interface Metrics {
   fontSizePt: number
