@@ -11,7 +11,7 @@ use crate::auth::{self, Credentials, User};
 use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, Application, ApplicationInput, Status};
-use crate::middleware::{require_auth, CurrentUser, SessionToken};
+use crate::middleware::{require_auth, CurrentUser, PeerAddr, SessionToken};
 use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -24,7 +24,13 @@ pub fn router() -> Router<AppState> {
         .route("/auth/signup", post(signup))
         .route("/auth/login", post(login))
         .route("/auth/logout", post(logout))
-        .route("/auth/me", get(me));
+        .route("/auth/me", get(me))
+        // Anonymous, by design: this is the whole point of a share link. Kept
+        // out from behind `require_auth`, but not out from under rate limits —
+        // see `check_public_rate_limit`, which each of these calls itself
+        // since the limit is keyed on the CV in the path, not just the caller.
+        .route("/public/cvs/{public_id}", get(get_published_cv))
+        .route("/public/cvs/{public_id}/pdf", get(download_published_pdf));
 
     let protected = Router::new()
         .route("/templates", get(list_templates))
@@ -35,6 +41,8 @@ pub fn router() -> Router<AppState> {
         .route("/cvs/{id}", get(get_cv).put(update_cv).delete(delete_cv))
         .route("/cvs/{id}/pdf", get(download_pdf))
         .route("/cvs/{id}/export", get(export_cv))
+        .route("/cvs/{id}/publish", post(publish_cv))
+        .route("/cvs/{id}/unpublish", post(unpublish_cv))
         .route(
             "/applications",
             get(list_applications).post(create_application),
@@ -309,6 +317,104 @@ async fn delete_cv(
 ) -> ApiResult<StatusCode> {
     db::delete(&state.pool, user.id(), &id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// -------------------------------------------------------------- publishing
+
+async fn publish_cv(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<db::Cv>> {
+    Ok(Json(db::publish(&state.pool, user.id(), &id).await?))
+}
+
+async fn unpublish_cv(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<db::Cv>> {
+    Ok(Json(db::unpublish(&state.pool, user.id(), &id).await?))
+}
+
+/// What a share link is limited to, apart from the general per-caller limit
+/// every other route already sits behind (`middleware::rate_limit`).
+///
+/// Both keys are checked, and either one being over is enough to refuse: a
+/// single address must not be able to hammer one link into the ground, and a
+/// single link must not be able to soak up load from many addresses at once.
+fn check_public_rate_limit(state: &AppState, addr: &str, public_id: &str) -> ApiResult<()> {
+    let ip_key = format!("ip:{addr}");
+    if let Err(allowance) = state.public_ip_limiter.check(&ip_key) {
+        tracing::warn!(key = %ip_key, "public cv rate limit reached");
+        return Err(ApiError::RateLimited {
+            retry_after: allowance.reset_in,
+        });
+    }
+
+    let cv_key = format!("cv:{public_id}");
+    if let Err(allowance) = state.public_cv_limiter.check(&cv_key) {
+        tracing::warn!(key = %cv_key, "public cv rate limit reached");
+        return Err(ApiError::RateLimited {
+            retry_after: allowance.reset_in,
+        });
+    }
+
+    Ok(())
+}
+
+/// What a visitor to a share link gets before the PDF itself: enough to put a
+/// name on the page, without shipping the whole document to a caller who is
+/// never going to see anything but its rendering anyway.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublishedCvInfo {
+    title: String,
+    full_name: String,
+}
+
+async fn get_published_cv(
+    State(state): State<AppState>,
+    PeerAddr(addr): PeerAddr,
+    Path(public_id): Path<String>,
+) -> ApiResult<Json<PublishedCvInfo>> {
+    check_public_rate_limit(&state, &addr, &public_id)?;
+    let cv = db::get_published(&state.pool, &public_id).await?;
+    Ok(Json(PublishedCvInfo {
+        title: cv.title,
+        full_name: cv.document.basics.full_name,
+    }))
+}
+
+/// The PDF behind a share link.
+///
+/// Goes through the same [`crate::render::Renderer`] as the preview and the
+/// owner's own download — a share link shows exactly the same pure function
+/// of `(document, template, theme)`, just cached, because unlike the editor
+/// it can be visited by anyone at any time and does not get to assume its
+/// caller is the one CV's owner about to leave the page.
+async fn download_published_pdf(
+    State(state): State<AppState>,
+    PeerAddr(addr): PeerAddr,
+    Path(public_id): Path<String>,
+) -> ApiResult<Response> {
+    check_public_rate_limit(&state, &addr, &public_id)?;
+    let cv = db::get_published(&state.pool, &public_id).await?;
+    let filename = format!("{}.pdf", slug(&cv.document.basics.full_name, &cv.title));
+
+    let fresh = cv.cached_for.as_deref() == Some(cv.updated_at.as_str());
+    let pdf = match cv.cached_pdf.filter(|_| fresh) {
+        Some(bytes) => bytes,
+        None => {
+            let id = cv.id.clone();
+            let rendered_for = cv.updated_at.clone();
+            let bytes = state.renderer.pdf(cv.document).await?;
+            db::cache_published_pdf(&state.pool, &id, &rendered_for, &bytes).await;
+            bytes
+        }
+    };
+
+    Ok(pdf_response(pdf, Some(&filename)))
 }
 
 // ------------------------------------------------------------- import/export

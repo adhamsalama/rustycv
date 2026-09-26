@@ -12,6 +12,7 @@ import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { ShareControl } from '../components/ShareControl'
 import { SortableList, SortableRow } from '../components/Sortable'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
@@ -135,6 +136,7 @@ export function Editor() {
           Preview
         </button>
         <AppearanceToggle />
+        {data ? <ShareControl cv={data} /> : null}
         <div className="editor-actions">
           <a className="ghost" href={api.exportUrl(id)}>
             Export JSON

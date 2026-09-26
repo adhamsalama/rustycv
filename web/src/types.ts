@@ -119,6 +119,7 @@ export interface CvSummary {
   fullName: string
   createdAt: string
   updatedAt: string
+  published: boolean
 }
 
 export interface Cv {
@@ -127,6 +128,11 @@ export interface Cv {
   createdAt: string
   updatedAt: string
   document: CvDocument
+  /** The share link's token, once one has been assigned. Kept across an
+   * unpublish so a link that was shared once keeps working if switched back
+   * on. */
+  publicId: string | null
+  published: boolean
 }
 
 // ---------------------------------------------------------- job tracker

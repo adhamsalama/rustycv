@@ -85,6 +85,36 @@ pub async fn rate_limit(
     }
 }
 
+/// The address a request arrived from, read the same forgiving way
+/// [`rate_limit`] does: "unknown" when there is no connection info to read,
+/// which is what an in-process call (a test, or the router driven directly)
+/// looks like rather than an error worth failing the request over.
+///
+/// A public share link's own, tighter rate limit
+/// (`routes::check_public_rate_limit`) needs this same address outside of
+/// the blanket `rate_limit` middleware, because it is also keyed on the CV in
+/// the path — a key `rate_limit` never sees.
+pub struct PeerAddr(pub String);
+
+impl<S> axum::extract::FromRequestParts<S> for PeerAddr
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(PeerAddr(
+            parts
+                .extensions
+                .get::<ConnectInfo<SocketAddr>>()
+                .map_or_else(|| "unknown".to_string(), |info| info.0.ip().to_string()),
+        ))
+    }
+}
+
 /// Refuse anything that reached a protected route without a session.
 pub async fn require_auth(request: Request, next: Next) -> Result<Response, ApiError> {
     if request.extensions().get::<User>().is_none() {

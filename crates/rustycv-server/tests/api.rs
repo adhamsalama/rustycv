@@ -5,6 +5,7 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use rustycv_core::CvDocument;
 use serde_json::{json, Value};
+use sqlx::Row;
 use tower::ServiceExt;
 
 const FIXTURE: &str = include_str!("../../../fixtures/adham.json");
@@ -852,6 +853,8 @@ async fn signed_out_limited_to(limit: u32) -> TestApp {
         pool,
         renderer: rustycv_server::render::Renderer::new(),
         limiter: rustycv_server::ratelimit::RateLimiter::with_limit(limit),
+        public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
     });
 
     TestApp {
@@ -1008,6 +1011,8 @@ async fn the_first_account_adopts_cvs_that_predate_accounts() {
         pool,
         renderer: rustycv_server::render::Renderer::new(),
         limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
     });
     let mut app = TestApp {
         router,
@@ -1175,4 +1180,375 @@ async fn changing_a_password_needs_a_session() {
         )
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// -------------------------------------------------------------- publishing
+
+/// A CV, plus a place to publish it from.
+async fn create_cv(app: &TestApp) -> String {
+    let (status, created) = app
+        .json("POST", "/api/cvs", json!({"title": "Shareable"}))
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    created["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn publishing_hands_back_a_link_and_unpublishing_keeps_it_but_hides_it() {
+    let app = TestApp::new().await;
+    let id = create_cv(&app).await;
+
+    let (status, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(published["published"], true);
+    let public_id = published["publicId"].as_str().unwrap().to_string();
+    assert!(!public_id.is_empty());
+
+    // A visitor with no session can reach it.
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, unpublished) = app
+        .json("POST", &format!("/api/cvs/{id}/unpublish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unpublished["published"], false);
+    assert_eq!(
+        unpublished["publicId"], public_id,
+        "the link survives being switched off, so it works again if switched back on"
+    );
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "an off link reads as gone");
+
+    // Republishing hands back the very same link.
+    let (status, republished) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(republished["publicId"], public_id);
+}
+
+#[tokio::test]
+async fn an_unknown_public_link_is_not_found() {
+    let app = TestApp::new().await;
+    let (status, _) = app
+        .json_as(None, "GET", "/api/public/cvs/does-not-exist", json!({}))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let response = app
+        .response_as(
+            None,
+            Request::builder()
+                .uri("/api/public/cvs/does-not-exist/pdf")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn only_the_owner_can_publish_or_unpublish() {
+    let app = TestApp::new().await;
+    let id = create_cv(&app).await;
+    let other = app.register("someone-else@example.com").await;
+
+    let (status, _) = app
+        .json_as(
+            Some(&other),
+            "POST",
+            &format!("/api/cvs/{id}/publish"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, _) = app
+        .json_as(None, "POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_visitor_can_download_the_published_pdf_without_a_session() {
+    let app = TestApp::new().await;
+    let id = create_cv(&app).await;
+    let (_, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    let public_id = published["publicId"].as_str().unwrap();
+
+    let response = app
+        .response_as(
+            None,
+            Request::builder()
+                .uri(format!("/api/public/cvs/{public_id}/pdf"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CONTENT_TYPE], "application/pdf");
+}
+
+#[tokio::test]
+async fn the_published_pdf_is_cached_and_invalidated_by_an_edit() {
+    let app = TestApp::new().await;
+    let id = create_cv(&app).await;
+    let (_, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    let public_id = published["publicId"].as_str().unwrap().to_string();
+
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(&format!("sqlite://{}", app.path.display()))
+        .await
+        .unwrap();
+
+    async fn cache_row(
+        pool: &sqlx::SqlitePool,
+        id: &str,
+    ) -> (Option<Vec<u8>>, Option<String>, String) {
+        let row = sqlx::query(
+            "SELECT public_pdf, public_pdf_cached_for, updated_at FROM cvs WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (
+            row.get("public_pdf"),
+            row.get("public_pdf_cached_for"),
+            row.get("updated_at"),
+        )
+    }
+
+    let (pdf, cached_for, _) = cache_row(&pool, &id).await;
+    assert!(pdf.is_none(), "nothing has been rendered yet");
+    assert!(cached_for.is_none());
+
+    let (status, _) = app.get(&format!("/api/public/cvs/{public_id}/pdf")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (pdf, cached_for, updated_at) = cache_row(&pool, &id).await;
+    assert!(pdf.is_some(), "the first visit renders and caches");
+    assert_eq!(cached_for.as_deref(), Some(updated_at.as_str()));
+    let first_pdf = pdf.unwrap();
+
+    let (status, _) = app.get(&format!("/api/public/cvs/{public_id}/pdf")).await;
+    assert_eq!(status, StatusCode::OK);
+    let (pdf_after_second_visit, cached_for_after, updated_at_after) = cache_row(&pool, &id).await;
+    assert_eq!(
+        pdf_after_second_visit.as_deref(),
+        Some(first_pdf.as_slice()),
+        "a second visit with nothing changed serves the same cached bytes"
+    );
+    assert_eq!(updated_at_after, updated_at);
+    assert_eq!(cached_for_after, cached_for);
+
+    // Edit the CV: the document changes, so `updated_at` moves on.
+    let mut document = fixture();
+    document["basics"]["fullName"] = json!("A New Name");
+    let document: CvDocument = serde_json::from_value(document).unwrap();
+    let (status, _) = app
+        .json(
+            "PUT",
+            &format!("/api/cvs/{id}"),
+            json!({"document": document}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, cached_for_stale, updated_at_new) = cache_row(&pool, &id).await;
+    assert_ne!(updated_at_new, updated_at, "the edit bumped updated_at");
+    assert_eq!(
+        cached_for_stale, cached_for,
+        "the cache is not touched by the write itself, only by the next visit"
+    );
+
+    let (status, _) = app.get(&format!("/api/public/cvs/{public_id}/pdf")).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, cached_for_fresh, _) = cache_row(&pool, &id).await;
+    assert_eq!(
+        cached_for_fresh.as_deref(),
+        Some(updated_at_new.as_str()),
+        "the next visit after an edit re-renders and re-caches"
+    );
+}
+
+#[tokio::test]
+async fn unpublishing_clears_the_cached_pdf_rather_than_just_hiding_it() {
+    let app = TestApp::new().await;
+    let id = create_cv(&app).await;
+    let (_, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    let public_id = published["publicId"].as_str().unwrap().to_string();
+
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .connect(&format!("sqlite://{}", app.path.display()))
+        .await
+        .unwrap();
+
+    async fn cache_columns(pool: &sqlx::SqlitePool, id: &str) -> (Option<Vec<u8>>, Option<String>) {
+        let row = sqlx::query("SELECT public_pdf, public_pdf_cached_for FROM cvs WHERE id = ?")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        (row.get("public_pdf"), row.get("public_pdf_cached_for"))
+    }
+
+    let (status, _) = app.get(&format!("/api/public/cvs/{public_id}/pdf")).await;
+    assert_eq!(status, StatusCode::OK);
+    let (pdf, cached_for) = cache_columns(&pool, &id).await;
+    assert!(pdf.is_some(), "the visit above should have cached one");
+    assert!(cached_for.is_some());
+
+    let (status, _) = app
+        .json("POST", &format!("/api/cvs/{id}/unpublish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (pdf, cached_for) = cache_columns(&pool, &id).await;
+    assert!(
+        pdf.is_none(),
+        "unpublishing must not leave a rendered PDF sitting in the row"
+    );
+    assert!(cached_for.is_none());
+}
+
+/// A public app whose two share-link limiters are small enough to reach the
+/// end of, with the general limiter left generous so it never interferes.
+async fn app_with_public_limits(ip_limit: u32, cv_limit: u32) -> TestApp {
+    let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
+    let pool = rustycv_server::db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .expect("database opens");
+    let router = rustycv_server::app_with_state(rustycv_server::state::AppState {
+        pool,
+        renderer: rustycv_server::render::Renderer::new(),
+        limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        public_ip_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(ip_limit),
+        public_cv_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(cv_limit),
+    });
+    let mut app = TestApp {
+        router,
+        path,
+        session: None,
+    };
+    app.session = Some(app.register("owner@example.com").await);
+    app
+}
+
+#[tokio::test]
+async fn a_flooded_share_link_is_refused_without_touching_others() {
+    let app = app_with_public_limits(1000, 3).await;
+
+    let id_a = create_cv(&app).await;
+    let (_, published_a) = app
+        .json("POST", &format!("/api/cvs/{id_a}/publish"), json!({}))
+        .await;
+    let public_a = published_a["publicId"].as_str().unwrap().to_string();
+
+    let id_b = create_cv(&app).await;
+    let (_, published_b) = app
+        .json("POST", &format!("/api/cvs/{id_b}/publish"), json!({}))
+        .await;
+    let public_b = published_b["publicId"].as_str().unwrap().to_string();
+
+    for n in 0..3 {
+        let (status, _) = app
+            .json_as(
+                None,
+                "GET",
+                &format!("/api/public/cvs/{public_a}"),
+                json!({}),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "visit {n} to A is within its limit");
+    }
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_a}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::TOO_MANY_REQUESTS,
+        "A's own link is flooded"
+    );
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_b}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "B's link is a different key and must not be caught up in A's flood"
+    );
+}
+
+#[tokio::test]
+async fn one_address_hammering_a_share_link_is_refused() {
+    let app = app_with_public_limits(2, 1000).await;
+    let id = create_cv(&app).await;
+    let (_, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    let public_id = published["publicId"].as_str().unwrap().to_string();
+
+    for n in 0..2 {
+        let (status, _) = app
+            .json_as(
+                None,
+                "GET",
+                &format!("/api/public/cvs/{public_id}"),
+                json!({}),
+            )
+            .await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "visit {n} is within the per-address limit"
+        );
+    }
+
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 }

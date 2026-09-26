@@ -15,6 +15,19 @@ pub const MAX_REQUESTS: u32 = 1000;
 /// The window they are counted over.
 pub const WINDOW: Duration = Duration::from_secs(60 * 60);
 
+/// A public share link renders a PDF for whoever holds it, without an account
+/// to key on — so it gets its own, much tighter windows on top of the general
+/// limit above, one per address and one per CV.
+///
+/// A cache hit is cheap, but the first visit after every edit is a full Typst
+/// compile, so both stay well under what a render worker can actually absorb
+/// even if every request happens to miss.
+pub const PUBLIC_IP_MAX_REQUESTS: u32 = 30;
+/// Higher than the per-IP cap: a link shared somewhere genuinely popular is
+/// visited by many different addresses, and that traffic is legitimate in a
+/// way that one address alone hammering a link is not.
+pub const PUBLIC_CV_MAX_REQUESTS: u32 = 120;
+
 /// Sweep expired keys once the table passes this size. A sweep is O(n) and
 /// this bounds how often it runs; below it, the table is small enough that the
 /// memory does not matter.

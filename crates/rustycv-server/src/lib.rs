@@ -23,6 +23,8 @@ pub async fn build_app(database_url: &str) -> anyhow::Result<Router> {
         pool,
         renderer: render::Renderer::new(),
         limiter: ratelimit::RateLimiter::new(),
+        public_ip_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_IP_MAX_REQUESTS),
+        public_cv_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_CV_MAX_REQUESTS),
     };
     Ok(app_with_state(state))
 }

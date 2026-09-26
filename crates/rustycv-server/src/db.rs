@@ -47,6 +47,7 @@ pub struct CvSummary {
     pub full_name: String,
     pub created_at: String,
     pub updated_at: String,
+    pub published: bool,
 }
 
 /// A full CV: metadata plus the document itself.
@@ -58,6 +59,10 @@ pub struct Cv {
     pub created_at: String,
     pub updated_at: String,
     pub document: CvDocument,
+    /// The share link's token, once one has been assigned. Kept even while
+    /// unpublished so republishing hands back the same link.
+    pub public_id: Option<String>,
+    pub published: bool,
 }
 
 fn now() -> String {
@@ -74,7 +79,8 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
                COALESCE(json_extract(data, '$.template'), 'classic')   AS template,
                COALESCE(json_extract(data, '$.basics.fullName'), '')   AS full_name,
                created_at,
-               updated_at
+               updated_at,
+               published
         FROM cvs
         WHERE user_id = ?
         ORDER BY updated_at DESC
@@ -93,6 +99,7 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
             full_name: r.get("full_name"),
             created_at: r.get("created_at"),
             updated_at: r.get("updated_at"),
+            published: r.get("published"),
         })
         .collect())
 }
@@ -103,7 +110,8 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
 /// all is not this account's business.
 pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
     let row = sqlx::query(
-        "SELECT id, title, data, created_at, updated_at FROM cvs WHERE id = ? AND user_id = ?",
+        "SELECT id, title, data, created_at, updated_at, public_id, published
+         FROM cvs WHERE id = ? AND user_id = ?",
     )
     .bind(id)
     .bind(user_id)
@@ -118,6 +126,8 @@ pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         document: serde_json::from_str(&data)?,
+        public_id: row.get("public_id"),
+        published: row.get("published"),
     })
 }
 
@@ -202,4 +212,112 @@ pub async fn delete(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<()>
         return Err(ApiError::NotFound);
     }
     Ok(())
+}
+
+// ------------------------------------------------------------- publishing
+
+/// Turn the share link on, assigning it a token the first time this is
+/// called. Later calls with the link already off just flip it back on,
+/// handing back the same token — a link once shared should not silently stop
+/// working just because it was toggled off and on again.
+pub async fn publish(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
+    let existing = get(pool, user_id, id).await?;
+    let public_id = existing
+        .public_id
+        .clone()
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    sqlx::query("UPDATE cvs SET public_id = ?, published = 1 WHERE id = ? AND user_id = ?")
+        .bind(&public_id)
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    get(pool, user_id, id).await
+}
+
+pub async fn unpublish(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
+    // The cache is cleared, not just gated off: `published = 0` already keeps
+    // `get_published` from ever handing these bytes to a visitor, but leaving
+    // a rendered PDF sitting in the row after the link is switched off is the
+    // one thing this cache was never supposed to be — the CV's data, rather
+    // than a disposable memo of it.
+    let affected = sqlx::query(
+        "UPDATE cvs
+         SET published = 0, public_pdf = NULL, public_pdf_cached_for = NULL
+         WHERE id = ? AND user_id = ?",
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(ApiError::NotFound);
+    }
+    get(pool, user_id, id).await
+}
+
+/// A published CV, as the public link needs it: the document to render, plus
+/// whatever the last render for this content was, so the caller can decide
+/// whether it is still good.
+pub struct PublishedCv {
+    pub id: String,
+    pub title: String,
+    pub document: CvDocument,
+    /// The content's own version. `cached_pdf` is only good while this
+    /// matches — the moment an edit lands, `updated_at` moves on and the
+    /// cache is stale.
+    pub updated_at: String,
+    pub cached_pdf: Option<Vec<u8>>,
+    pub cached_for: Option<String>,
+}
+
+/// Somebody following a share link. `NotFound` unless the CV both exists and
+/// is currently published — a toggled-off link reads exactly like one that
+/// never existed, which is the point of the switch.
+pub async fn get_published(pool: &SqlitePool, public_id: &str) -> ApiResult<PublishedCv> {
+    let row = sqlx::query(
+        "SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for
+         FROM cvs WHERE public_id = ? AND published = 1",
+    )
+    .bind(public_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+
+    let data: String = row.get("data");
+    Ok(PublishedCv {
+        id: row.get("id"),
+        title: row.get("title"),
+        document: serde_json::from_str(&data)?,
+        updated_at: row.get("updated_at"),
+        cached_pdf: row.get("public_pdf"),
+        cached_for: row.get("public_pdf_cached_for"),
+    })
+}
+
+/// Save a freshly rendered PDF as the cache for this content version.
+///
+/// `rendered_for` is the `updated_at` that was current when rendering
+/// started, not when it finished — if an edit lands in between, the row's
+/// `updated_at` has already moved past what we are about to write, so the
+/// next visit's version check fails and it renders again instead of serving
+/// what just went stale.
+pub async fn cache_published_pdf(pool: &SqlitePool, id: &str, rendered_for: &str, pdf: &[u8]) {
+    // Best-effort: a failure to cache means the next visit renders again,
+    // which is correct behaviour, not a degraded one — so it is logged rather
+    // than surfaced as a request failure.
+    if let Err(error) =
+        sqlx::query("UPDATE cvs SET public_pdf = ?, public_pdf_cached_for = ? WHERE id = ?")
+            .bind(pdf)
+            .bind(rendered_for)
+            .bind(id)
+            .execute(pool)
+            .await
+    {
+        tracing::warn!(%error, cv_id = %id, "failed to cache published pdf");
+    }
 }

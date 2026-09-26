@@ -6,6 +6,7 @@ import { AuthGate } from './components/AuthGate'
 import { Board } from './pages/Board'
 import { Dashboard } from './pages/Dashboard'
 import { Editor } from './pages/Editor'
+import { Share } from './pages/Share'
 import { ME, shouldRecheckSession } from './session'
 import './styles.css'
 
@@ -27,13 +28,23 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AuthGate>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/cv/:id" element={<Editor />} />
-            <Route path="/jobs" element={<Board />} />
-          </Routes>
-        </AuthGate>
+        <Routes>
+          {/* Public, and outside the gate: a share link is read by whoever
+              holds it, with no session to check. */}
+          <Route path="/share/:publicId" element={<Share />} />
+          <Route
+            path="*"
+            element={
+              <AuthGate>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/cv/:id" element={<Editor />} />
+                  <Route path="/jobs" element={<Board />} />
+                </Routes>
+              </AuthGate>
+            }
+          />
+        </Routes>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

@@ -79,6 +79,13 @@ export const api = {
   importCv: (document: CvDocument, title?: string) =>
     request<Cv>('/cvs/import', { method: 'POST', body: JSON.stringify({ title, document }) }),
 
+  publishCv: (id: string) => request<Cv>(`/cvs/${id}/publish`, { method: 'POST', body: '{}' }),
+  unpublishCv: (id: string) => request<Cv>(`/cvs/${id}/unpublish`, { method: 'POST', body: '{}' }),
+
+  /** What a share link's page needs before it has its own PDF to show. */
+  getPublishedCv: (publicId: string) =>
+    request<{ title: string; fullName: string }>(`/public/cvs/${publicId}`),
+
   listApplications: () => request<Application[]>('/applications'),
   createApplication: (input: Partial<ApplicationInput>) =>
     request<Application>('/applications', { method: 'POST', body: JSON.stringify(input) }),
@@ -113,4 +120,8 @@ export const api = {
 
   pdfUrl: (id: string) => `/api/cvs/${id}/pdf`,
   exportUrl: (id: string) => `/api/cvs/${id}/export`,
+
+  publicPdfUrl: (publicId: string) => `/api/public/cvs/${publicId}/pdf`,
+  /** The page a share link actually points at, not the API route behind it. */
+  shareUrl: (publicId: string) => `${window.location.origin}/share/${publicId}`,
 }
