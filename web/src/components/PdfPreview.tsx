@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { api, ApiError } from '../api'
 import type { CvDocument, Diagnostic } from '../types'
@@ -10,10 +17,13 @@ interface PreviewState {
   error: string | null
 }
 
-export function PdfPreview({
-  document,
-  renderAt,
-}: {
+/** Lets a control outside this component (the topbar's small-screen "Preview"
+ * button) open the same full-CV overlay as the ⤢ icon and the "e" shortcut. */
+export interface PdfPreviewHandle {
+  expand: () => void
+}
+
+export const PdfPreview = forwardRef<PdfPreviewHandle, {
   document: CvDocument
   /**
    * Permission to render, from the autosave: a token that changes once the
@@ -21,9 +31,10 @@ export function PdfPreview({
    * this component simply renders whenever the token moves.
    */
   renderAt: string
-}) {
+}>(function PdfPreview({ document, renderAt }, ref) {
   const [expanded, setExpanded] = useState(false)
   const close = useCallback(() => setExpanded(false), [])
+  useImperativeHandle(ref, () => ({ expand: () => setExpanded(true) }), [])
   const [state, setState] = useState<PreviewState>({
     url: null,
     pending: true,
@@ -138,7 +149,7 @@ export function PdfPreview({
       {expanded ? <ExpandedPreview url={state.url} onClose={close} /> : null}
     </div>
   )
-}
+})
 
 /**
  * The full CV over a dimmed editor.

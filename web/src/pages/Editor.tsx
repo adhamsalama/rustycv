@@ -10,7 +10,7 @@ import { useDebounced } from '../hooks/useDebounced'
 import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
-import { PdfPreview } from '../components/PdfPreview'
+import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { SortableList, SortableRow } from '../components/Sortable'
 
@@ -83,6 +83,7 @@ export function Editor() {
   // The outline becomes a slide-in drawer once it no longer fits beside the
   // pane; closed by default so a phone doesn't open on top of it.
   const [outlineOpen, setOutlineOpen] = useState(false)
+  const previewRef = useRef<PdfPreviewHandle>(null)
 
   if (isLoading) return <main className="centered">Loading…</main>
   if (error) return <main className="centered">Could not load this CV.</main>
@@ -122,6 +123,17 @@ export function Editor() {
           {saveState === 'saving' ? 'Saving…' : saveState === 'error' ? 'Save failed' : 'Saved'}
         </span>
         <div className="spacer" />
+        {/* The stacked preview is already on the page below the fields, but a
+            small screen means scrolling past all of them to reach it — this
+            jumps straight to the same overlay the ⤢ icon on the preview
+            itself opens. */}
+        <button
+          type="button"
+          className="ghost preview-toggle"
+          onClick={() => previewRef.current?.expand()}
+        >
+          Preview
+        </button>
         <AppearanceToggle />
         <a className="ghost" href={api.exportUrl(id)}>
           Export JSON
@@ -212,7 +224,7 @@ export function Editor() {
         </main>
 
         <aside className="preview-pane">
-          <PdfPreview document={document} renderAt={renderAt} />
+          <PdfPreview ref={previewRef} document={document} renderAt={renderAt} />
         </aside>
       </div>
     </div>

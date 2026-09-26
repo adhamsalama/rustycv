@@ -140,7 +140,8 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 /* Shown only once the outline has somewhere to hide — the drawer further
    down — rather than sitting beside the pane as a normal column. */
-.outline-toggle { display: none; width: 30px; height: 28px; padding: 0; justify-content: center; font-size: 15px; }
+.outline-toggle, .preview-toggle { display: none; }
+.outline-toggle { width: 30px; height: 28px; padding: 0; justify-content: center; font-size: 15px; }
 
 .save-state { font-size: 12px; color: var(--muted); }
 .save-error { color: var(--danger); }
@@ -378,7 +379,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
     flex: 0 0 70vh;
     min-height: 360px;
   }
-  .outline-toggle { display: inline-flex; }
+  .outline-toggle, .preview-toggle { display: inline-flex; }
 
   /* Fixed to the viewport, not the scrolling .editor-body, so opening it
      doesn't depend on being scrolled back to the top first. */
