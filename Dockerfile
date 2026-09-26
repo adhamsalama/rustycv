@@ -6,7 +6,9 @@ FROM node:22-bookworm-slim AS web
 WORKDIR /web
 RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 # Dependencies before sources, so editing a component does not reinstall them.
-COPY web/package.json web/pnpm-lock.yaml ./
+# `pnpm-workspace.yaml` comes too: it is what allows esbuild's postinstall to
+# run, and pnpm fails the install rather than silently skipping it.
+COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml web/.npmrc ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
 RUN pnpm build
