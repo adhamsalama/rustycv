@@ -4,6 +4,10 @@ default:
 
 db := "sqlite://rustycv.db"
 
+# The port the server listens on. `PORT` in the environment beats this default,
+# and an argument beats both: `just serve-bundled 9000`.
+default_port := env_var_or_default("PORT", "8080")
+
 # Backend on :8080 and Vite on :5173, both watching.
 dev:
     #!/usr/bin/env bash
@@ -20,10 +24,10 @@ serve:
 seed:
     DATABASE_URL="{{db}}" cargo run -p rustycv-server --bin seed
 
-# Build the frontend, then serve everything from the Rust binary on :8080.
-serve-bundled:
+# Build the frontend, then serve everything from the Rust binary.
+serve-bundled port=default_port:
     pnpm -C web build
-    DATABASE_URL="{{db}}" cargo run --release -p rustycv-server --bin rustycv-server
+    DATABASE_URL="{{db}}" PORT="{{port}}" cargo run --release -p rustycv-server --bin rustycv-server
 
 test:
     cargo test --workspace

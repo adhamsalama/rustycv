@@ -51,7 +51,10 @@ cargo fmt --check
 cargo test -p rustycv-render --test render   # writes target/render-out/*.pdf|png
 ```
 
-`just` wraps these but **is not installed here** — use the plain commands.
+`just` wraps these. `just serve-bundled [port]` takes an optional port,
+defaulting to `PORT` from the environment and then to 8080; the server itself
+reads `PORT` and **falls back to 8080 without complaint** if it cannot parse it,
+so a typo'd port looks like the flag being ignored.
 
 ## Gotchas that have each cost real time
 

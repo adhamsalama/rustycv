@@ -172,9 +172,11 @@ A `justfile` wraps all of the above. It is convenience only — every task is a
 plain command you can run directly.
 
 ```sh
-brew install just     # or: cargo install just
-just                  # list tasks
-just dev              # API + Vite together
+brew install just          # or: cargo install just
+just                       # list tasks
+just dev                   # API + Vite together
+just serve-bundled         # build the UI and serve it all from Rust, on :8080
+just serve-bundled 9000    # …or on a port of your choosing
 just seed / test / lint / render / reset-db
 ```
 
