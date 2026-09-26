@@ -51,9 +51,9 @@ export function Dashboard() {
             from scratch.
           </p>
         </div>
+        <AppearanceToggle />
         <div className="dashboard-actions">
           <AccountMenu />
-          <AppearanceToggle />
           <Link className="ghost" to="/jobs">
             Job tracker
           </Link>

@@ -135,12 +135,14 @@ export function Editor() {
           Preview
         </button>
         <AppearanceToggle />
-        <a className="ghost" href={api.exportUrl(id)}>
-          Export JSON
-        </a>
-        <a className="primary" href={api.pdfUrl(id)}>
-          Download PDF
-        </a>
+        <div className="editor-actions">
+          <a className="ghost" href={api.exportUrl(id)}>
+            Export JSON
+          </a>
+          <a className="primary" href={api.pdfUrl(id)}>
+            Download PDF
+          </a>
+        </div>
       </header>
 
       <div className="editor-body">
