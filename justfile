@@ -9,7 +9,7 @@ db := "sqlite://rustycv.db"
 default_port := env_var_or_default("PORT", "8080")
 
 # Backend on :8080 and Vite on :5173, both watching.
-dev:
+dev: _wasm-note
     #!/usr/bin/env bash
     trap 'kill 0' EXIT
     DATABASE_URL="{{db}}" cargo run -p rustycv-server --bin rustycv-server &
@@ -25,18 +25,39 @@ seed:
     DATABASE_URL="{{db}}" cargo run -p rustycv-server --bin seed
 
 # Build the frontend, then serve everything from the Rust binary.
-serve-bundled port=default_port:
+serve-bundled port=default_port: _wasm-note
     pnpm -C web build
     DATABASE_URL="{{db}}" PORT="{{port}}" cargo run --release -p rustycv-server --bin rustycv-server
 
-# Build the browser renderer into web/public/wasm/.
+# Say something if the browser renderer is missing or stale.
 #
-# Optional: without it the editor still works, the toggle reports that the
-# module is not there, and every render goes to the server. `pnpm build` copies
-# whatever is in public/ into dist/, so this has to run first to be shipped.
+# Not a dependency of the recipes that want it: building it needs a wasm
+# toolchain that is deliberately optional, and failing here would make that
+# toolchain a requirement for running the app at all. But rendering in the
+# browser is the default, and both of these failures look identical from the
+# outside — the editor quietly asking the server instead, or drawing a template
+# that was replaced hours ago.
+_wasm-note:
+    #!/usr/bin/env bash
+    module=web/public/wasm/rustycv_wasm_bg.wasm
+    if [ ! -f "$module" ]; then
+        echo "note: no browser renderer built — every render will fall back to the server." >&2
+        echo "      \`just wasm\` builds one; RUSTYCV_RENDER=server says you meant it." >&2
+    elif [ -n "$(find templates assets crates/rustycv-core/src crates/rustycv-render/src -newer "$module" -type f -print -quit)" ]; then
+        # Templates, icons and fonts are compiled into the module the same way
+        # they are compiled into the server, so the same staleness trap applies
+        # — twice over, since only one of the two would be rebuilt.
+        echo "note: the browser renderer is older than a template, asset or renderer source." >&2
+        echo "      \`just wasm\` rebuilds it; until then the browser draws the old one." >&2
+    fi
+
+# Build the browser renderer into web/public/wasm/.
 wasm:
     #!/usr/bin/env bash
     set -euo pipefail
+    # Optional: without it the editor still works and every render goes to the
+    # server. `pnpm build` copies public/ into dist/ verbatim, so this has to
+    # run before it for the module to be served at all.
     # The CLI has to match the crate exactly — a mismatch fails with a schema
     # error that says nothing about versions.
     wanted=$(awk '/^name = "wasm-bindgen"$/ {getline; gsub(/[",]/, "", $3); print $3; exit}' Cargo.lock)

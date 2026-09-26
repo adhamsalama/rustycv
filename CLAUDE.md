@@ -185,7 +185,10 @@ renders the new one — which looks like the flag changing the output, the one
 thing it must never do.
 
 `just wasm` writes into `web/public/wasm/`, which Vite copies verbatim into
-`dist/`, so it has to run **before** `pnpm -C web build`. Nothing imports it at
+`dist/`, so it has to run **before** `pnpm -C web build`. It is not a
+dependency of `dev` or `serve-bundled` — the wasm toolchain stays optional —
+but `_wasm-note` runs ahead of both and says so when the module is missing or
+older than `templates/`, `assets/` or the renderer's source. Nothing imports it at
 build time: `renderWorker.ts` fetches `/wasm/rustycv_wasm.js` at runtime behind
 `/* @vite-ignore */`, which is what keeps a missing module a runtime fallback
 instead of a build error.

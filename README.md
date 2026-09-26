@@ -181,6 +181,7 @@ just                       # list tasks
 just dev                   # API + Vite together
 just serve-bundled         # build the UI and serve it all from Rust, on :8080
 just serve-bundled 9000    # …or on a port of your choosing
+just wasm                  # build the browser renderer (see below)
 just seed / test / lint / render / reset-db
 ```
 
@@ -282,6 +283,12 @@ is on your PATH, which is worth a few megabytes and is otherwise skipped.
 Vite copies `web/public/` verbatim into `web/dist/`, so the wasm has to be
 built *before* `pnpm -C web build` to be served. The Docker image does this in
 its own stage, so a published image always has it.
+
+`just dev` and `just serve-bundled` deliberately do **not** build it — the wasm
+toolchain stays optional — but they do say something when the module is missing
+or is older than a template, an asset or the renderer's own source. Both look
+identical from the outside otherwise: the editor quietly asking the server
+instead, or drawing a template that was replaced an hour ago.
 
 ---
 
