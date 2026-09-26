@@ -17,10 +17,15 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
 
+    // Loopback unless asked otherwise: there is no auth here (see README), so a
+    // public bind has to be deliberate. The Docker image sets `HOST=0.0.0.0`,
+    // where the container boundary is what makes that deliberate.
+    let host = std::env::var("HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+
     let app = rustycv_server::build_app(&database_url).await?;
 
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
-    tracing::info!("rustycv listening on http://127.0.0.1:{port}");
+    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
+    tracing::info!("rustycv listening on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await?;
     Ok(())
 }

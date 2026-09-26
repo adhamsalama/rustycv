@@ -191,6 +191,9 @@ kind — there are tests for both.
 ## Scope
 
 No auth: single implicit local user, and `CorsLayer::permissive()` in debug
-builds. Fine on localhost, not safe to expose. Users never author Typst — they
+builds. Fine on localhost, not safe to expose. The binary binds `127.0.0.1`
+unless `HOST` says otherwise, which is the one guard here — the Docker image
+overrides it to `0.0.0.0` because a container that binds loopback is
+unreachable, so anything that publishes that port is publishing every CV. Users never author Typst — they
 pick a template and turn theme knobs — so don't add a raw-Typst escape hatch
 without sandboxing the compile.

@@ -127,6 +127,7 @@ All optional.
 | ------------------ | ------------------------------------- | -------------------------------------------------------------- |
 | `DATABASE_URL`     | `sqlite://rustycv.db`                 | SQLite file. Created automatically; migrations run at startup. |
 | `PORT`             | `8080`                                | API/server port.                                               |
+| `HOST`             | `127.0.0.1`                           | Bind address. Loopback on purpose — there is no auth. The Docker image sets `0.0.0.0`. |
 | `RUSTYCV_WEB_DIST` | `web/dist`                            | Where the built frontend lives.                                |
 | `RUST_LOG`         | `rustycv_server=info,tower_http=warn` | Standard `tracing` filter.                                     |
 | `RUSTYCV_API`      | `http://127.0.0.1:8080`               | Vite dev-server proxy target (frontend only).                  |
@@ -179,6 +180,43 @@ just serve-bundled         # build the UI and serve it all from Rust, on :8080
 just serve-bundled 9000    # …or on a port of your choosing
 just seed / test / lint / render / reset-db
 ```
+
+---
+
+## Docker
+
+The image carries the server binary and the built editor and nothing else — no
+fonts, no Typst packages, no toolchain, because the render path only ever reads
+memory.
+
+```sh
+docker run -p 8080:80 -v rustycv-data:/data adhamsalama/rustycv
+```
+
+The volume is the point: `/data` holds the SQLite database, and without it your
+CVs go when the container does. `HOST=0.0.0.0` is baked in, since a container
+that binds loopback is a container nothing can reach.
+
+It listens on **80** inside the container — publish it wherever you like, as
+above. The container still runs as a non-root user: the binary carries
+`cap_net_bind_service`, which is the only thing it needs root for. `PORT`
+overrides the port as usual.
+
+**This has no authentication.** Publishing the port past your own machine
+publishes every CV in it, and a writable API with it. Put it behind something
+that authenticates, or keep it on localhost.
+
+Tags: `latest` from `main`, `1.2.3` and `1.2` from a `v1.2.3` git tag, and a
+short SHA on every build. Building it yourself is the same one step:
+
+```sh
+docker build -t rustycv .
+```
+
+`.github/workflows/docker.yml` publishes on every push to `main`, on `v*` tags,
+and on demand. It needs two repository secrets — `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` (an access token from Docker Hub, not your password) — and
+pushes to whatever `IMAGE` names at the top of the file.
 
 ---
 

@@ -1,0 +1,56 @@
+# Publish the server and the built editor as one image on Docker Hub.
+#
+# Needs two repository secrets: DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (an
+# access token from hub.docker.com, not the account password).
+name: Publish image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+# A second push to main should not race the first to the `latest` tag.
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: adhamsalama/rustycv
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # `latest` only from main; a v1.2.3 tag also publishes 1.2.3 and 1.2.
+      # Every build gets its short SHA, so a running container is traceable to
+      # a commit without reading the log.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Layer cache between runs: the Rust build is the slow half and its
+          # inputs rarely all change at once.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

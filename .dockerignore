@@ -1,0 +1,15 @@
+# Everything the build makes for itself, plus anything that would bust the
+# cache without changing the image.
+target
+**/node_modules
+web/dist
+*.tsbuildinfo
+.git
+.github
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+out
+Dockerfile
+.dockerignore
