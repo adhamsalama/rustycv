@@ -24,11 +24,14 @@ Whole sections **and individual entries** can be hidden rather than deleted, so
 one CV can be tailored per application without losing anything. A section whose
 entries are all hidden leaves no trace — not even its heading.
 
-Description fields — summaries, entry notes, and work-experience highlights —
-support **bold, italic, underline and links**. The formatting is stored as a
-flat list of styled runs rather than HTML or Markdown, so nothing ever parses
-untrusted markup on its way into a PDF; text that carries no marks is still
-stored as a plain string, keeping exports readable.
+Description fields — summaries, entry notes, project descriptions and
+work-experience highlights — are all the same kind of value: **bold, italic,
+underline and links**, plus paragraphs and bulleted or numbered lists. Enter
+starts the next paragraph or list item, Shift+Enter breaks a line inside the one
+you are writing. The formatting is stored as a flat list of blocks of styled runs
+rather than HTML or Markdown, so nothing ever parses untrusted markup on its way
+into a PDF; a single unstyled paragraph is still stored as a plain string,
+keeping exports readable.
 
 Work Experience carries two switches of its own, honoured by every template
 because they are document data rather than template decoration: whether an
@@ -180,8 +183,8 @@ just seed / test / lint / render / reset-db
 ## Tests
 
 ```sh
-cargo test --workspace     # 60 tests
-pnpm -C web test           # 23 tests, the rich-text conversions
+cargo test --workspace     # 83 tests
+pnpm -C web test           # 55 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check

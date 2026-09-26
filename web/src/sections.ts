@@ -10,10 +10,11 @@ import type { BaseItem, SectionKind } from './types'
 export type FieldSpec =
   | { key: string; label: string; type: 'text' | 'url' | 'email' | 'tel'; placeholder?: string; width?: 'full' | 'half' }
   | { key: string; label: string; type: 'textarea'; placeholder?: string; rows?: number }
-  /** One rich value, with bold/italic/underline/link. */
-  | { key: string; label: string; type: 'rich'; placeholder?: string }
-  /** A bullet list whose items are rich values. */
-  | { key: string; label: string; type: 'richBullets'; placeholder?: string }
+  /**
+   * One rich value: marks, paragraphs and both kinds of list. `startsAsList`
+   * opens an untouched field as a bulleted list, which is what highlights want.
+   */
+  | { key: string; label: string; type: 'rich'; placeholder?: string; startsAsList?: boolean }
   | { key: string; label: string; type: 'date'; width?: 'half' }
   | { key: string; label: string; type: 'checkbox' }
   /** A `string[]` edited as a comma-separated list. */
@@ -50,7 +51,8 @@ export const SECTION_SPECS: Record<SectionKind, SectionSpec> = {
       {
         key: 'bullets',
         label: 'Highlights',
-        type: 'richBullets',
+        type: 'rich',
+        startsAsList: true,
         placeholder: 'One achievement per bullet — ⌘B for bold',
       },
     ],
@@ -155,7 +157,6 @@ export function blankItem(kind: SectionKind): BaseItem {
         item[field.key] = null
         break
       case 'tags':
-      case 'richBullets':
         item[field.key] = []
         break
       case 'rich':

@@ -25,18 +25,36 @@
   if a == "" and b == "" { "" } else if a == "" { b } else if b == "" { a } else { a + " – " + b }
 }
 
-// Rich text arrives either as a bare string (unstyled) or as an array of runs.
-// Both are handled here so no template has to know which form it got.
-#let rich(value) = {
-  if value == none { return [] }
-  if type(value) == str { return [#value] }
-  if type(value) != array { return [] }
+// Rich text arrives in one of three forms — a bare string (one unstyled
+// paragraph), an array of runs (one styled paragraph), or an array of blocks.
+// `rich-blocks` normalises all three so nothing below has to know which it got.
+#let rich-blocks(value) = {
+  if value == none { return () }
+  if type(value) == str {
+    return if value == "" { () } else { ((kind: "paragraph", runs: ((text: value),)),) }
+  }
+  if type(value) != array or value.len() == 0 { return () }
+  // A block carries `runs`; a run carries `text`. That is the whole difference.
+  if "runs" in value.first() {
+    return value.map(b => (
+      kind: b.at("kind", default: "paragraph"),
+      runs: b.at("runs", default: ()),
+    ))
+  }
+  ((kind: "paragraph", runs: value),)
+}
 
+// One block's runs as inline content.
+#let rich-runs(runs) = {
   let out = []
-  for run in value {
-    let text = run.at("text", default: "")
-    if text == "" { continue }
-    let piece = [#text]
+  for run in runs {
+    let body = run.at("text", default: "")
+    if body == "" { continue }
+    // A soft line break inside a paragraph is stored as a newline in the run's
+    // text, and Typst breaks the line on a newline inside a text value — unlike
+    // a newline written in markup, which is ordinary whitespace.
+    // `a_soft_line_break_starts_a_new_line` pins that.
+    let piece = [#body]
     // Applied outermost-last so a run that is bold *and* a link renders as both.
     if run.at("bold", default: false) { piece = strong(piece) }
     if run.at("italic", default: false) { piece = emph(piece) }
@@ -48,15 +66,75 @@
   out
 }
 
-// The plain text behind rich text, for emptiness checks.
-#let rich-text(value) = {
-  if value == none { return "" }
-  if type(value) == str { return value }
-  if type(value) != array { return "" }
-  value.map(run => run.at("text", default: "")).join("")
-}
+// The plain text behind rich text, for emptiness checks. `sum` rather than
+// `join`, which answers `none` for an empty array and would poison every
+// caller's `.trim()`.
+#let block-text(b) = b.runs.map(r => r.at("text", default: "")).sum(default: "")
+
+#let rich-text(value) = rich-blocks(value).map(block-text).intersperse("\n").sum(default: "")
 
 #let rich-nonempty(value) = rich-text(value).trim() != ""
+
+// The blocks that would actually render.
+#let rich-filled(value) = rich-blocks(value).filter(b => block-text(b).trim() != "")
+
+// True when the whole value fits on a line already in progress: at most one
+// paragraph, no list markers, no line breaks. A project description reads after
+// the project's name when this holds and drops below it when it does not.
+#let rich-inlineable(value) = {
+  let blocks = rich-filled(value)
+  if blocks.len() > 1 { return false }
+  blocks.all(b => b.kind == "paragraph" and not b.runs.any(r => "\n" in r.at("text", default: "")))
+}
+
+// Rich text as inline content, for the places that have no room for blocks —
+// a list item's body, or a project's one-line description.
+#let rich-inline(value) = rich-filled(value).map(b => rich-runs(b.runs)).intersperse([ ]).sum(default: [])
+
+// Rich text as block content: paragraphs and lists stacked, with consecutive
+// list items of one kind gathered into a single list so their markers line up.
+//
+// `gap` is the caller's line step. Items inside a list sit exactly that far
+// apart, the same as an entry's highlights; the break *between* blocks is two
+// steps, because one step is what a line already costs and a paragraph break
+// set to it would be indistinguishable from a wrapped line. Everything is
+// measured in line steps, so the type-size and line-height controls move it.
+#let rich(value, gap: 0.5em, marker: [•], body-indent: 0.45em) = {
+  let blocks = rich-filled(value)
+  if blocks.len() == 0 { return }
+
+  // One paragraph is the overwhelmingly common case and predates blocks
+  // entirely: hand it back as plain inline content so that the weak spacing a
+  // template sets around it still collapses the way it always has.
+  if blocks.len() == 1 and blocks.first().kind == "paragraph" {
+    return rich-runs(blocks.first().runs)
+  }
+
+  let groups = ()
+  for b in blocks {
+    if groups.len() > 0 and groups.last().kind == b.kind and b.kind != "paragraph" {
+      groups.last().items.push(b.runs)
+    } else {
+      groups.push((kind: b.kind, items: (b.runs,)))
+    }
+  }
+
+  for (i, g) in groups.enumerate() {
+    let body = if g.kind == "bullet" {
+      set list(marker: marker, indent: 0pt, body-indent: body-indent, spacing: gap)
+      list(..g.items.map(rich-runs))
+    } else if g.kind == "numbered" {
+      set enum(indent: 0pt, body-indent: body-indent, spacing: gap)
+      enum(..g.items.map(rich-runs))
+    } else {
+      rich-runs(g.items.first())
+    }
+    // Only the gaps *between* blocks belong to rich text; what surrounds the
+    // whole value is the caller's to set.
+    if i > 0 { v(gap * 2, weak: false) }
+    block(above: 0pt, below: 0pt, body)
+  }
+}
 
 #let nonempty(s) = s != none and str(s).trim() != ""
 
@@ -75,15 +153,6 @@
   align(left, left-side),
   align(right + top, right-side),
 )
-
-// `gap` is the space between items; pass the paragraph leading so a list
-// reads as one evenly-leaded block rather than clumping as line height grows.
-#let bullets(items, marker: [•], indent: 0pt, gap: 0.45em) = {
-  let items = items.filter(b => rich-nonempty(b))
-  if items.len() == 0 { return }
-  set list(marker: marker, indent: indent, body-indent: 0.45em, spacing: gap)
-  list(..items.map(b => rich(b)))
-}
 
 // Group consecutive experience entries that share an employer.
 //
@@ -208,7 +277,9 @@
       if nonempty(it.at("location", default: "")) {
         block(spacing: 0.3em * t, (style.meta)(it.location))
       }
-      bullets(it.at("bullets", default: ()), gap: style.leading)
+      // Highlights are a rich value like any other description: usually a
+      // bulleted list, but paragraphs and a numbered list render here too.
+      rich(it.at("bullets", default: ()), gap: style.leading)
     }
   }
 }
@@ -221,7 +292,7 @@
       (style.meta)(fmt-range(it.start, it.end, current: it.at("current", default: false))),
     ))
     if rich-nonempty(it.at("description", default: "")) {
-      block(spacing: 0.35em * t, rich(it.description))
+      block(spacing: 0.35em * t, rich(it.description, gap: style.leading))
     }
   }
 }
@@ -242,11 +313,18 @@
 #let projects-section(items, style) = {
   let t = style.tight
   for it in items {
+    let description = it.at("description", default: "")
+    // A one-line description reads on the name line; one carrying a list or a
+    // second paragraph has nowhere to sit there, so it drops below it.
+    let inline-description = rich-inlineable(description)
     block(above: 0.6em * t, below: 0.6em * t, {
       maybe-link(it.at("url", default: ""), (style.title)(it.name))
-      if rich-nonempty(it.at("description", default: "")) { [, ] + rich(it.description) }
+      if inline-description and rich-nonempty(description) { [, ] + rich-inline(description) }
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))
       if tech.len() > 0 { [ ] + (style.meta)(tech.join(" · ")) }
+      if not inline-description {
+        block(above: style.leading, below: 0pt, rich(description, gap: style.leading))
+      }
     })
   }
 }

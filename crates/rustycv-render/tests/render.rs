@@ -926,8 +926,13 @@ fn spacing_scales_with_type_size() {
                     {
                         "id": "22222222-2222-4222-8222-222222222222",
                         "title": "Education", "visible": true, "kind": "education",
+                        // Blocks as well as a plain string: the gaps between
+                        // paragraphs and list items have to scale too.
                         "items": [{ "degree": "Alpha", "institution": "Acme",
-                                    "description": "Alpha" }]
+                                    "description": [
+                                      { "kind": "paragraph", "runs": [{ "text": "Alpha" }] },
+                                      { "kind": "bullet", "runs": [{ "text": "Alpha" }] },
+                                      { "kind": "bullet", "runs": [{ "text": "Alpha" }] }] }]
                     },
                     {
                         "id": "33333333-3333-4333-8333-333333333333",
@@ -964,6 +969,317 @@ fn spacing_scales_with_type_size() {
             error < 0.01,
             "{}: type size went up {expected:.2}x but the content grew {grew:.3}x \
              — some spacing is in absolute units rather than em",
+            template.id
+        );
+    }
+}
+
+// ------------------------------------------------------- blocks in rich text
+
+/// A document whose only content is a summary, so every text line below the
+/// name belongs to the value under test.
+fn doc_with_summary(template: &str, summary: Value) -> CvDocument {
+    serde_json::from_value(json!({
+        "template": template,
+        "theme": { "accent": "#000000", "fontFamily": "Source Sans 3" },
+        "basics": { "fullName": "N", "summary": summary },
+        "sections": []
+    }))
+    .expect("document builds")
+}
+
+/// Every text line's top row paired with its first and last inked column.
+///
+/// Lines rather than total ink: a marker or a descender moves the overall
+/// height for reasons that have nothing to do with the layout under test.
+fn line_extents(png: &[u8]) -> Vec<(u32, u32, u32)> {
+    let img = image::load_from_memory(png)
+        .expect("page decodes")
+        .to_luma8();
+    let (width, height) = img.dimensions();
+    let inked = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 128;
+
+    let mut lines: Vec<(u32, u32, u32)> = Vec::new();
+    let mut inside = false;
+    for y in 0..height {
+        let columns: Vec<u32> = (0..width).filter(|&x| inked(x, y)).collect();
+        match (columns.first(), columns.last()) {
+            (Some(&left), Some(&right)) => {
+                if inside {
+                    let last = lines.last_mut().unwrap();
+                    last.1 = last.1.min(left);
+                    last.2 = last.2.max(right);
+                } else {
+                    lines.push((y, left, right));
+                }
+                inside = true;
+            }
+            _ => inside = false,
+        }
+    }
+    lines
+}
+
+#[test]
+fn a_soft_line_break_starts_a_new_line() {
+    // Shift+Enter is stored as a newline inside a run. Typst treats a lone
+    // newline in markup as ordinary whitespace, so without an explicit
+    // linebreak the two halves would run together on one line.
+    let one_line = render_pngs(&doc_with_summary("classic", json!("Alpha Beta")), 200.0).unwrap();
+    let two_lines = render_pngs(&doc_with_summary("classic", json!("Alpha\nBeta")), 200.0).unwrap();
+
+    assert_eq!(text_line_starts(&one_line[0]).len(), 2, "name + summary");
+    assert_eq!(
+        text_line_starts(&two_lines[0]).len(),
+        3,
+        "name + both halves of the summary"
+    );
+}
+
+#[test]
+fn a_paragraph_break_is_a_wider_step_than_a_line_break() {
+    let step_between_summary_lines = |summary: Value| {
+        let page = render_pngs(&doc_with_summary("classic", summary), 200.0).unwrap();
+        let starts = text_line_starts(&page[0]);
+        assert_eq!(starts.len(), 3, "name plus two lines of summary");
+        starts[2] - starts[1]
+    };
+
+    let soft = step_between_summary_lines(json!("Alpha\nBeta"));
+    let paragraphs = step_between_summary_lines(json!([
+        { "kind": "paragraph", "runs": [{ "text": "Alpha" }] },
+        { "kind": "paragraph", "runs": [{ "text": "Beta" }] }
+    ]));
+
+    // Two line steps rather than one, so the break cannot be mistaken for a
+    // wrapped line. This failed at first: a gap of exactly one step renders
+    // identically to a line break.
+    assert!(
+        paragraphs > soft + soft / 3,
+        "a paragraph break ({paragraphs}px) should be clearly wider than a line break ({soft}px)"
+    );
+}
+
+#[test]
+fn a_paragraph_break_scales_with_the_line_height_control() {
+    // The gap is the caller's line step, so the line-height slider has to move
+    // it. A gap hardcoded in em would hold still while the text spread.
+    let step_at = |line_height: f32| {
+        let mut doc = doc_with_summary(
+            "classic",
+            json!([
+                { "kind": "paragraph", "runs": [{ "text": "Alpha" }] },
+                { "kind": "paragraph", "runs": [{ "text": "Beta" }] }
+            ]),
+        );
+        doc.theme.line_height = line_height;
+        let page = render_pngs(&doc, 200.0).unwrap();
+        let starts = text_line_starts(&page[0]);
+        starts[2] - starts[1]
+    };
+
+    let tight = step_at(1.0);
+    let loose = step_at(1.6);
+    assert!(
+        loose > tight + 4,
+        "raising line height should widen the paragraph gap: {tight}px then {loose}px"
+    );
+}
+
+#[test]
+fn a_list_in_a_description_sets_its_text_behind_a_marker() {
+    let paragraph = render_pngs(&doc_with_summary("classic", json!("Alpha")), 200.0).unwrap();
+    let bulleted = render_pngs(
+        &doc_with_summary(
+            "classic",
+            json!([{ "kind": "bullet", "runs": [{ "text": "Alpha" }] }]),
+        ),
+        200.0,
+    )
+    .unwrap();
+
+    let (_, plain_left, plain_right) = line_extents(&paragraph[0])[1];
+    let (_, bullet_left, bullet_right) = line_extents(&bulleted[0])[1];
+
+    // The marker takes the paragraph's place at the left margin and the word
+    // moves right behind it, so the line ends further right than it did.
+    assert!(
+        bullet_left <= plain_left + 2,
+        "the marker should sit at the margin: {bullet_left} vs {plain_left}"
+    );
+    assert!(
+        bullet_right > plain_right + 4,
+        "the item's text should be indented behind its marker: {bullet_right} vs {plain_right}"
+    );
+}
+
+#[test]
+fn a_numbered_list_is_not_drawn_as_a_bulleted_one() {
+    let render = |kind: &str| {
+        render_pngs(
+            &doc_with_summary(
+                "classic",
+                json!([
+                    { "kind": kind, "runs": [{ "text": "Alpha" }] },
+                    { "kind": kind, "runs": [{ "text": "Beta" }] }
+                ]),
+            ),
+            200.0,
+        )
+        .unwrap()
+    };
+
+    assert_ne!(
+        digest(&render("bullet").concat()),
+        digest(&render("numbered").concat()),
+        "a numbered list should carry different markers from a bulleted one"
+    );
+}
+
+#[test]
+fn consecutive_items_share_one_list() {
+    // Each item is its own block, so nothing stops them being rendered as a
+    // stack of one-item lists — which spaces them apart like paragraphs
+    // instead of like a list.
+    let items = |n: usize| {
+        let blocks: Vec<Value> = (0..n)
+            .map(|_| json!({ "kind": "bullet", "runs": [{ "text": "Alpha" }] }))
+            .collect();
+        let page = render_pngs(&doc_with_summary("classic", json!(blocks)), 200.0).unwrap();
+        text_line_starts(&page[0])
+    };
+
+    let three = items(3);
+    assert_eq!(three.len(), 4, "name plus three items");
+    let first_gap = three[2] - three[1];
+    let second_gap = three[3] - three[2];
+    assert_eq!(
+        first_gap, second_gap,
+        "items should be evenly spaced, not split across separate lists"
+    );
+
+    // And that spacing is the list's own, not the wider paragraph break.
+    let paragraphs = render_pngs(
+        &doc_with_summary(
+            "classic",
+            json!([
+                { "kind": "paragraph", "runs": [{ "text": "Alpha" }] },
+                { "kind": "paragraph", "runs": [{ "text": "Alpha" }] }
+            ]),
+        ),
+        200.0,
+    )
+    .unwrap();
+    let starts = text_line_starts(&paragraphs[0]);
+    assert!(
+        first_gap < starts[2] - starts[1],
+        "list items should sit closer together than paragraphs"
+    );
+}
+
+#[test]
+fn a_project_description_drops_below_the_name_when_it_cannot_share_the_line() {
+    let project = |description: Value| {
+        let doc: CvDocument = serde_json::from_value(json!({
+            "template": "classic",
+            "theme": { "accent": "#000000", "fontFamily": "Source Sans 3" },
+            "basics": { "fullName": "N" },
+            "sections": [{
+                "id": "11111111-1111-4111-8111-111111111111",
+                "title": "Projects", "visible": true, "kind": "projects",
+                "items": [{ "name": "Atlas", "description": description, "tech": ["Rust"] }]
+            }]
+        }))
+        .unwrap();
+        let page = render_pngs(&doc, 200.0).unwrap();
+        text_line_starts(&page[0]).len()
+    };
+
+    // Name, section heading, then the entry itself.
+    let inline = project(json!("A renderer"));
+    assert_eq!(inline, 3, "a one-line description stays on the name line");
+
+    let blocks = project(json!([
+        { "kind": "bullet", "runs": [{ "text": "Renders fast" }] },
+        { "kind": "bullet", "runs": [{ "text": "One binary" }] }
+    ]));
+    assert_eq!(
+        blocks, 5,
+        "a list needs two lines of its own below the name"
+    );
+}
+
+#[test]
+fn highlights_take_the_same_blocks_a_description_does() {
+    // Highlights were once one value per bullet; they are now a rich value like
+    // any other, so a numbered list or a paragraph renders here too.
+    let entry = |bullets: Value| {
+        let doc: CvDocument = serde_json::from_value(json!({
+            "template": "classic",
+            "theme": { "accent": "#000000", "fontFamily": "Source Sans 3" },
+            "basics": { "fullName": "N" },
+            "sections": [{
+                "id": "11111111-1111-4111-8111-111111111111",
+                "title": "Work", "visible": true, "kind": "experience",
+                "items": [{ "role": "Dev", "company": "Acme", "bullets": bullets }]
+            }]
+        }))
+        .unwrap();
+        render_pngs(&doc, 200.0).unwrap()
+    };
+
+    // The older per-bullet form and the block form are the same document.
+    assert_eq!(
+        digest(&entry(json!(["Alpha", "Beta"])).concat()),
+        digest(
+            &entry(json!([
+                { "kind": "bullet", "runs": [{ "text": "Alpha" }] },
+                { "kind": "bullet", "runs": [{ "text": "Beta" }] }
+            ]))
+            .concat()
+        ),
+        "highlights written one value per bullet must render as bullet blocks"
+    );
+
+    let numbered = entry(json!([
+        { "kind": "numbered", "runs": [{ "text": "Alpha" }] },
+        { "kind": "numbered", "runs": [{ "text": "Beta" }] }
+    ]));
+    assert_ne!(
+        digest(&numbered.concat()),
+        digest(&entry(json!(["Alpha", "Beta"])).concat()),
+        "a numbered highlight list should not render as bullets"
+    );
+
+    // Name, section heading, entry heading, then the two lines themselves.
+    assert_eq!(text_line_starts(&numbered[0]).len(), 5);
+}
+
+#[test]
+fn every_template_renders_paragraphs_and_both_kinds_of_list() {
+    // flowcv carries its own entry geometry, so it renders this through a
+    // different path from the five that share `common.typ`.
+    let summary = json!([
+        { "kind": "paragraph", "runs": [{ "text": "Led the rewrite." }] },
+        { "kind": "bullet", "runs": [{ "text": "Cut p99 latency." }] },
+        { "kind": "bullet", "runs": [{ "text": "Shipped retries." }] },
+        { "kind": "numbered", "runs": [{ "text": "Then the migration." }] }
+    ]);
+
+    for template in TEMPLATES {
+        let lines = |summary: Value| {
+            let doc = doc_with_summary(template.id, summary);
+            let page = &render_pngs(&doc, 150.0)
+                .unwrap_or_else(|e| panic!("template `{}` failed on blocks: {e:#?}", template.id))
+                [0];
+            text_line_starts(page).len()
+        };
+        // Against the same page with no summary at all, because a template's
+        // own chrome — modern's rule, banner's block — inks rows of its own.
+        assert_eq!(
+            lines(summary.clone()) as i64 - lines(json!("")) as i64,
+            4,
+            "template `{}` should draw all four blocks",
             template.id
         );
     }

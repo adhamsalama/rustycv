@@ -223,7 +223,7 @@ fn every_serialized_key_is_camel_case() {
 
 // ------------------------------------------------------------- rich text
 
-use rustycv_core::{RichText, Run};
+use rustycv_core::{Block, BlockKind, RichText, Run};
 
 #[test]
 fn a_bare_string_loads_as_unstyled_rich_text() {
@@ -295,10 +295,178 @@ fn a_bullet_can_carry_marks() {
 
     match &doc.sections[0].body {
         rustycv_core::SectionBody::Experience { items, .. } => {
-            let bullet = &items[0].bullets[0];
-            assert_eq!(bullet.plain_text(), "Improved accuracy to 98.5%");
-            assert!(bullet.runs()[1].bold && bullet.runs()[1].italic);
+            let highlights = &items[0].bullets;
+            assert_eq!(highlights.blocks()[0].kind, BlockKind::Bullet);
+            assert_eq!(highlights.plain_text(), "Improved accuracy to 98.5%");
+            assert!(highlights.runs()[1].bold && highlights.runs()[1].italic);
         }
         other => panic!("expected experience, got {other:?}"),
     }
+}
+
+#[test]
+fn highlights_written_one_value_per_bullet_load_as_bullets() {
+    // How every document before this change stored them. Losing the shape here
+    // would turn a CV's highlights into one run-on paragraph.
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Work","kind":"experience","items":[{"role":"Dev",
+             "bullets":["Cut p99 latency.", [{"text":"Shipped ","bold":true},{"text":"retries."}]]}]}]}"#,
+    )
+    .unwrap();
+
+    let highlights = match &doc.sections[0].body {
+        rustycv_core::SectionBody::Experience { items, .. } => &items[0].bullets,
+        other => panic!("expected experience, got {other:?}"),
+    };
+    assert_eq!(highlights.blocks().len(), 2);
+    assert!(highlights
+        .blocks()
+        .iter()
+        .all(|b| b.kind == BlockKind::Bullet));
+    assert_eq!(
+        highlights.plain_text(),
+        "Cut p99 latency.\nShipped retries."
+    );
+    assert!(highlights.runs()[1].bold);
+}
+
+#[test]
+fn highlights_accept_the_forms_every_other_description_takes() {
+    let highlights = |json: &str| {
+        let doc: CvDocument = serde_json::from_str(&format!(
+            r#"{{"sections":[{{"title":"Work","kind":"experience",
+                 "items":[{{"role":"Dev","bullets":{json}}}]}}]}}"#
+        ))
+        .unwrap();
+        match &doc.sections[0].body {
+            rustycv_core::SectionBody::Experience { items, .. } => items[0].bullets.clone(),
+            other => panic!("expected experience, got {other:?}"),
+        }
+    };
+
+    // A bare string and a run array are one paragraph, exactly as they are in a
+    // description — an array of *values* is the older per-bullet shape instead.
+    assert_eq!(
+        highlights(r#""Just a note.""#),
+        RichText::plain("Just a note.")
+    );
+    assert_eq!(
+        highlights(r#"[{"text":"Bold","bold":true}]"#).blocks()[0].kind,
+        BlockKind::Paragraph
+    );
+    assert_eq!(
+        highlights(r#"[{"kind":"numbered","runs":[{"text":"First"}]}]"#).blocks()[0].kind,
+        BlockKind::Numbered
+    );
+    assert!(highlights("[]").is_empty());
+}
+
+#[test]
+fn blocks_round_trip_and_stay_in_the_block_form() {
+    let json = r#"[{"kind":"paragraph","runs":[{"text":"Led the rewrite."}]},
+                   {"kind":"bullet","runs":[{"text":"Cut p99 latency."}]},
+                   {"kind":"numbered","runs":[{"text":"Then the retries."}]}]"#;
+    let text: RichText = serde_json::from_str(json).unwrap();
+
+    let kinds: Vec<_> = text.blocks().iter().map(|b| b.kind).collect();
+    assert_eq!(
+        kinds,
+        [BlockKind::Paragraph, BlockKind::Bullet, BlockKind::Numbered]
+    );
+
+    // More than one block, so there is no smaller form to collapse into.
+    let written = serde_json::to_string(&text).unwrap();
+    assert!(written.starts_with("[{\"kind\":"), "got {written}");
+    assert_eq!(
+        serde_json::from_str::<RichText>(&written).unwrap(),
+        text,
+        "blocks must survive the trip"
+    );
+}
+
+#[test]
+fn a_block_object_is_never_mistaken_for_a_run() {
+    // Both forms are arrays of objects, so the untagged split rests on each
+    // rejecting the other's fields. A bullet read as a run would lose its
+    // marker and print as a paragraph.
+    let text: RichText =
+        serde_json::from_str(r#"[{"kind":"bullet","runs":[{"text":"One"}]}]"#).unwrap();
+    assert_eq!(text.blocks()[0].kind, BlockKind::Bullet);
+
+    let text: RichText = serde_json::from_str(r#"[{"text":"One","bold":true}]"#).unwrap();
+    assert_eq!(text.blocks().len(), 1);
+    assert_eq!(text.blocks()[0].kind, BlockKind::Paragraph);
+    assert!(text.runs()[0].bold);
+}
+
+#[test]
+fn a_single_unstyled_paragraph_still_collapses_to_a_string() {
+    // The block form must not leak into documents that do not need it.
+    let text = RichText::from_blocks(vec![Block::paragraph(vec![Run::plain("Hello")])]);
+    assert_eq!(serde_json::to_string(&text).unwrap(), r#""Hello""#);
+
+    // A soft line break lives inside a run, so this stays a bare string too.
+    let text = RichText::plain("One\nTwo");
+    assert_eq!(serde_json::to_string(&text).unwrap(), r#""One\nTwo""#);
+    assert_eq!(
+        serde_json::from_str::<RichText>(r#""One\nTwo""#).unwrap(),
+        text
+    );
+}
+
+#[test]
+fn blocks_that_would_render_nothing_are_dropped() {
+    // An empty block prints as a blank line the user cannot see or select, so
+    // it must not survive a save.
+    let text = RichText::from_blocks(vec![
+        Block::paragraph(vec![Run::plain("One")]),
+        Block::paragraph(vec![Run::plain("")]),
+        Block::new(BlockKind::Bullet, vec![]),
+    ]);
+    assert_eq!(text.blocks().len(), 1);
+    assert_eq!(serde_json::to_string(&text).unwrap(), r#""One""#);
+}
+
+#[test]
+fn rich_text_knows_when_it_can_share_a_line() {
+    // A project description sits after the project's name when it can, and
+    // drops to its own block when it cannot.
+    assert!(RichText::plain("A routing daemon").is_inline());
+    assert!(RichText::default().is_inline());
+    assert!(!RichText::plain("Two\nLines").is_inline());
+    assert!(!RichText::from_blocks(vec![
+        Block::paragraph(vec![Run::plain("One")]),
+        Block::paragraph(vec![Run::plain("Two")]),
+    ])
+    .is_inline());
+    assert!(
+        !RichText::from_blocks(vec![Block::new(BlockKind::Bullet, vec![Run::plain("One")])])
+            .is_inline()
+    );
+}
+
+#[test]
+fn a_description_can_hold_blocks() {
+    let doc: CvDocument = serde_json::from_str(
+        r#"{"sections":[{"title":"Projects","kind":"projects","items":[{"name":"Atlas",
+             "description":[{"kind":"bullet","runs":[{"text":"Renders 2M points."}]},
+                            {"kind":"bullet","runs":[{"text":"One binary."}]}]}]}]}"#,
+    )
+    .unwrap();
+
+    match &doc.sections[0].body {
+        rustycv_core::SectionBody::Projects { items, .. } => {
+            let description = &items[0].description;
+            assert_eq!(description.blocks().len(), 2);
+            assert!(description
+                .blocks()
+                .iter()
+                .all(|b| b.kind == BlockKind::Bullet));
+            assert_eq!(description.plain_text(), "Renders 2M points.\nOne binary.");
+        }
+        other => panic!("expected projects, got {other:?}"),
+    }
+
+    let again: CvDocument = serde_json::from_str(&serde_json::to_string(&doc).unwrap()).unwrap();
+    assert_eq!(again, doc);
 }

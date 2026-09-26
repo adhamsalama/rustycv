@@ -118,7 +118,7 @@
 )
 
 #if rich-nonempty(basics.summary) {
-  rich(basics.summary)
+  rich(basics.summary, gap: leading)
 }
 
 #render-sections(cv, style)

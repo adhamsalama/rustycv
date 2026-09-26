@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
+import { getSchema } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import { Node } from '@tiptap/pm/model'
 import {
-  bulletsToDoc,
-  docToBullets,
   docToValue,
   editorToRuns,
+  fromBlocks,
   fromRuns,
   isEmpty,
   plainText,
   runsToEditor,
+  toBlocks,
   toRuns,
   valueToDoc,
+  type EditorNode,
   type RichText,
 } from './rich'
 
@@ -81,13 +85,16 @@ describe('editor round trips', () => {
     expect(runs).toEqual([{ text: 'a' }])
   })
 
-  it('turns a hard break into a space rather than losing the text after it', () => {
+  it('keeps a hard break as a newline rather than flattening it to a space', () => {
+    // Shift+Enter. The renderer breaks the line on a newline inside a run, so
+    // this is what makes the second half start where the user put it.
     const runs = editorToRuns([
       { type: 'text', text: 'one' },
       { type: 'hardBreak' },
       { type: 'text', text: 'two' },
     ])
-    expect(plainText(fromRuns(runs))).toBe('one two')
+    expect(plainText(fromRuns(runs))).toBe('one\ntwo')
+    expect(fromRuns(runs)).toBe('one\ntwo')
   })
 
   it('collects text from unexpected wrappers', () => {
@@ -97,29 +104,6 @@ describe('editor round trips', () => {
 
   it('emits no marks array for unstyled runs', () => {
     expect(runsToEditor([{ text: 'a' }])).toEqual([{ type: 'text', text: 'a' }])
-  })
-})
-
-describe('bullet lists', () => {
-  it('round trips a list of bullets', () => {
-    const bullets: RichText[] = ['First', [{ text: 'Second ' }, { text: 'bold', bold: true }]]
-    expect(docToBullets(bulletsToDoc(bullets))).toEqual(bullets)
-  })
-
-  it('gives an empty list one bullet to type into', () => {
-    // ProseMirror rejects a bulletList with no listItem, so the editor would
-    // refuse to mount with an empty document.
-    const doc = bulletsToDoc([])
-    expect(doc.content?.[0]?.content).toHaveLength(1)
-  })
-
-  it('stores nothing when the only bullet is empty', () => {
-    expect(docToBullets(bulletsToDoc([]))).toEqual([])
-    expect(docToBullets(bulletsToDoc(['']))).toEqual([])
-  })
-
-  it('keeps a blank bullet in the middle of a list', () => {
-    expect(docToBullets(bulletsToDoc(['a', '', 'b']))).toEqual(['a', '', 'b'])
   })
 })
 
@@ -134,5 +118,202 @@ describe('emptiness', () => {
 
   it('reads plain text through formatting', () => {
     expect(plainText([{ text: 'a' }, { text: 'b', bold: true }])).toBe('ab')
+  })
+})
+
+describe('blocks', () => {
+  const cases: [string, RichText][] = [
+    ['two paragraphs', [
+      { kind: 'paragraph', runs: [{ text: 'Led the rewrite.' }] },
+      { kind: 'paragraph', runs: [{ text: 'Mentored two juniors.' }] },
+    ]],
+    ['a bulleted list', [
+      { kind: 'bullet', runs: [{ text: 'Cut p99 latency.' }] },
+      { kind: 'bullet', runs: [{ text: 'Shipped retries.' }] },
+    ]],
+    ['a numbered list', [
+      { kind: 'numbered', runs: [{ text: 'Migrate.' }] },
+      { kind: 'numbered', runs: [{ text: 'Cut over.' }] },
+    ]],
+    ['a paragraph, a list and a formatted run', [
+      { kind: 'paragraph', runs: [{ text: 'Led the ' }, { text: 'rewrite', bold: true }] },
+      { kind: 'bullet', runs: [{ text: 'Cut p99 latency.' }] },
+    ]],
+    ['a soft break inside a list item', [
+      { kind: 'bullet', runs: [{ text: 'One\nTwo' }] },
+      { kind: 'bullet', runs: [{ text: 'Three' }] },
+    ]],
+  ]
+
+  it.each(cases)('survives a trip through the editor: %s', (_name, value) => {
+    expect(docToValue(valueToDoc(value))).toEqual(value)
+  })
+
+  it('gathers neighbouring items of one kind into a single list', () => {
+    // Two separate lists would restart the numbering and break Enter, which
+    // continues the list node the caret is in.
+    const doc = valueToDoc([
+      { kind: 'bullet', runs: [{ text: 'One' }] },
+      { kind: 'bullet', runs: [{ text: 'Two' }] },
+      { kind: 'numbered', runs: [{ text: 'Three' }] },
+    ])
+    expect(doc.content?.map((node) => node.type)).toEqual(['bulletList', 'orderedList'])
+    expect(doc.content?.[0]?.content).toHaveLength(2)
+  })
+
+  it('reads a paragraph the editor wrote and a list it wrote', () => {
+    const value = docToValue({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'Intro' }] },
+        {
+          type: 'bulletList',
+          content: [
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'One' }] }] },
+            { type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Two' }] }] },
+          ],
+        },
+      ],
+    })
+    expect(value).toEqual([
+      { kind: 'paragraph', runs: [{ text: 'Intro' }] },
+      { kind: 'bullet', runs: [{ text: 'One' }] },
+      { kind: 'bullet', runs: [{ text: 'Two' }] },
+    ])
+  })
+
+  it('keeps paragraphs apart instead of welding them together', () => {
+    // Pasting two paragraphs used to concatenate them with no separator at
+    // all, so the PDF read "...rewrite.Mentored...".
+    const value = docToValue({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'First para.' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Second para.' }] },
+      ],
+    })
+    expect(plainText(value)).toBe('First para.\nSecond para.')
+  })
+
+  it('folds a list item that holds more than one paragraph', () => {
+    // Pasted content does this, and the format has one value per item.
+    const value = docToValue({
+      type: 'doc',
+      content: [
+        {
+          type: 'bulletList',
+          content: [
+            {
+              type: 'listItem',
+              content: [
+                { type: 'paragraph', content: [{ type: 'text', text: 'One' }] },
+                { type: 'paragraph', content: [{ type: 'text', text: 'Two' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    expect(value).toEqual([{ kind: 'bullet', runs: [{ text: 'One\nTwo' }] }])
+  })
+
+  it('stores the smallest form that loses nothing', () => {
+    expect(fromBlocks([{ kind: 'paragraph', runs: [{ text: 'Hello' }] }])).toBe('Hello')
+    expect(fromBlocks([{ kind: 'paragraph', runs: [{ text: 'Hello', bold: true }] }])).toEqual([
+      { text: 'Hello', bold: true },
+    ])
+    expect(fromBlocks([{ kind: 'bullet', runs: [{ text: 'Hello' }] }])).toEqual([
+      { kind: 'bullet', runs: [{ text: 'Hello' }] },
+    ])
+    expect(fromBlocks([])).toBe('')
+  })
+
+  it('drops blocks that would render nothing', () => {
+    expect(
+      fromBlocks([
+        { kind: 'paragraph', runs: [{ text: 'One' }] },
+        { kind: 'paragraph', runs: [{ text: '' }] },
+        { kind: 'bullet', runs: [] },
+      ]),
+    ).toBe('One')
+  })
+
+  it('reads the older stored forms as one paragraph', () => {
+    expect(toBlocks('Hello')).toEqual([{ kind: 'paragraph', runs: [{ text: 'Hello' }] }])
+    expect(toBlocks([{ text: 'Hello', bold: true }])).toEqual([
+      { kind: 'paragraph', runs: [{ text: 'Hello', bold: true }] },
+    ])
+    expect(toBlocks('')).toEqual([])
+    expect(toBlocks(null)).toEqual([])
+  })
+
+  it('gives an empty value a paragraph to type into', () => {
+    // ProseMirror needs a textblock to put the caret in.
+    expect(valueToDoc('').content).toEqual([{ type: 'paragraph', content: [] }])
+  })
+})
+
+describe('against TipTap\'s own schema', () => {
+  // These conversions are pure, but they have to agree with the real editor:
+  // TipTap fills in node defaults of its own, so a document we build is not
+  // byte-identical to the one it hands back. What has to survive is the stored
+  // value — `RichText.tsx` compares on that for exactly this reason.
+  const schema = getSchema([
+    StarterKit.configure({
+      heading: false,
+      blockquote: false,
+      codeBlock: false,
+      code: false,
+      strike: false,
+      horizontalRule: false,
+      link: { openOnClick: false },
+    }),
+  ])
+
+  /** What the editor would hand back for a document we gave it. */
+  const throughEditor = (doc: EditorNode): EditorNode =>
+    Node.fromJSON(schema, doc as never).toJSON() as EditorNode
+
+  const values: [string, RichText][] = [
+    ['a plain string', 'Reduced latency by 50%.'],
+    ['a soft break', 'One\nTwo'],
+    ['marks', [{ text: 'Improved to ' }, { text: '98.5%', bold: true }]],
+    ['a link', [{ text: 'docs', link: 'https://example.com' }]],
+    ['paragraphs', [
+      { kind: 'paragraph', runs: [{ text: 'One' }] },
+      { kind: 'paragraph', runs: [{ text: 'Two' }] },
+    ]],
+    ['a bulleted list', [
+      { kind: 'bullet', runs: [{ text: 'One' }] },
+      { kind: 'bullet', runs: [{ text: 'Two' }] },
+    ]],
+    ['a numbered list', [
+      { kind: 'numbered', runs: [{ text: 'One' }] },
+      { kind: 'numbered', runs: [{ text: 'Two' }] },
+    ]],
+    ['both kinds of list', [
+      { kind: 'paragraph', runs: [{ text: 'Intro' }] },
+      { kind: 'bullet', runs: [{ text: 'One' }] },
+      { kind: 'numbered', runs: [{ text: 'Two' }] },
+    ]],
+    ['nothing', ''],
+  ]
+
+  it.each(values)('survives the editor schema: %s', (_name, value) => {
+    expect(docToValue(throughEditor(valueToDoc(value)))).toEqual(value)
+  })
+
+  it('accepts every node the editor can produce', () => {
+    // A document the schema rejects would throw here rather than render.
+    for (const [, value] of values) expect(() => throughEditor(valueToDoc(value))).not.toThrow()
+    expect(() => throughEditor(valueToDoc('', 'bullet'))).not.toThrow()
+  })
+
+  it('opens an empty highlights field as a list the editor accepts', () => {
+    // Highlights have always behaved this way: click in, type, get bullets.
+    // An empty value cannot carry that itself, so the field asks for it.
+    const doc = throughEditor(valueToDoc('', 'bullet'))
+    expect(doc.content?.[0]?.type).toBe('bulletList')
+    expect(docToValue(doc)).toBe('')
   })
 })

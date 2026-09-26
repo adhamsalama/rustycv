@@ -200,6 +200,9 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 .rt-content p { margin: 0; }
 .rt-content p + p { margin-top: 0.4em; }
 .rt-content ul { margin: 0; padding-left: 1.1em; }
+.rt-content ol { margin: 0; padding-left: 1.4em; }
+.rt-content :is(ul, ol) + p,
+.rt-content p + :is(ul, ol) { margin-top: 0.4em; }
 .rt-content li { margin: 0; }
 .rt-content li + li { margin-top: 0.25em; }
 .rt-content a { color: var(--accent); text-decoration: underline; }

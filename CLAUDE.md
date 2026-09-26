@@ -43,8 +43,8 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 60 tests
-pnpm -C web test                    # 23, the rich-text conversions
+cargo test --workspace              # 83 tests
+pnpm -C web test                    # 55, the rich-text conversions
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
 
@@ -73,6 +73,18 @@ Inside an entry, one line step is `style.leading` (or `leading` in flowcv);
 breaks *between* entries multiply by `style.line-height` too. Absolute `pt`/`mm`
 is for strokes, radii and page geometry only — never for text spacing.
 
+**A gap of exactly one line step is invisible.** The step from one line to the
+next already *is* the leading, so a block spaced by `style.leading` renders
+identically to a wrapped line — which is what the first attempt at the paragraph
+break in a description did. Blocks inside a description sit *two* steps
+apart; list items inside one list sit one, matching an entry's highlights.
+`a_paragraph_break_is_a_wider_step_than_a_line_break` pins it and failed on
+exactly that bug.
+
+**Typst breaks the line on a newline inside a *text value*** — unlike a newline
+written in markup, which is ordinary whitespace. That is what makes a soft break
+(stored as `\n` in a run) work without an explicit `linebreak()`.
+
 **`typst` 0.15 API notes**: `FileId::new` takes a `RootedPath`, not
 `(Option<PackageSpec>, VirtualPath)`. `PagedDocument` lives in `typst-layout`,
 not re-exported from `typst`. Diagnostic spans are `DiagSpan`, and hints are
@@ -89,6 +101,14 @@ template that needs different *entry geometry* is the rare case, not the norm.
 from the accent's brightness rather than assuming a dark one; anything it draws
 on the paper instead uses the accent darkened back to a readable weight.
 `the_banner_band_picks_ink_that_survives_the_accent` pins both halves.
+
+Rich text has two entry points. `rich(value, gap:, marker:)` returns *block*
+content — paragraphs and lists; `rich-inline(value)` returns inline content, for
+a list item's body or a project's one-line description. A value that is a single
+paragraph comes back from `rich` as bare inline content on purpose: the weak
+spacing templates set around a summary then collapses exactly as it did before
+blocks existed, which is what keeps every pre-blocks CV rendering unchanged.
+`rich-inlineable(value)` is how a project decides between the two.
 
 `flowcv` carries its own entry geometry on purpose — its 55/45 title/date
 split, employer hairline and heading band are specific enough that reusing the
@@ -140,11 +160,26 @@ stay in step with `applyAppearance`.
 
 ## Wire format
 
-camelCase throughout. Rich text is a flat list of styled runs — never HTML or
-Markdown, so nothing parses untrusted markup on the way into a PDF. Unstyled
-text collapses to a bare JSON string, and both forms must render identically;
-`rich.rs` and `web/src/rich.ts` implement the same two forms and have to stay
-in step.
+camelCase throughout. Rich text is a flat list of *blocks* — paragraph, bullet
+or numbered — each a list of styled runs, never HTML or Markdown, so nothing
+parses untrusted markup on the way into a PDF. A list is not a node: consecutive
+items of one kind render as one list, which is what keeps the format flat.
+
+Three wire forms, and a value is written in the smallest that fits: a bare string
+(one unstyled paragraph), an array of runs (one styled paragraph), an array of
+blocks. All three must render identically, and the two array forms are told apart
+by *order* — blocks are tried first, and a run carries neither `kind` nor `runs`.
+A soft line break lives inside a run as a `\n`, so "two lines, no marks" stays a
+bare string. `rich.rs` and `web/src/rich.ts` implement the same three forms and
+have to stay in step.
+
+An experience entry's `bullets` is one of these values like any other
+description — it used to be a `Vec<RichText>`, one value per bullet, and
+`rich::highlights` still reads that shape into bullet blocks. Don't "simplify"
+that deserializer away: it is the only thing keeping existing CVs' highlights
+from collapsing into one run-on paragraph. The two shapes are distinguishable
+because the old one is an array of *values*, and a string or a run array is
+never a valid element of the new one.
 
 New fields need `#[serde(default)]` so older documents keep loading. Every
 render path must survive an empty document and a blank entry of every section

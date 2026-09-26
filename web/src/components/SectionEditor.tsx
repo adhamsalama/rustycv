@@ -5,7 +5,7 @@ import type { BaseItem, DateSpec, EntryOrder, Section } from '../types'
 import type { RichText } from '../rich'
 import { sectionItems, visibleItems } from '../types'
 import { CheckboxField, DateField, TagsField, TextArea, TextField } from './Fields'
-import { RichBulletsField, RichTextField } from './RichText'
+import { RichTextField } from './RichText'
 import { SortableList, SortableRow } from './Sortable'
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value : '')
@@ -14,7 +14,6 @@ const asDate = (value: unknown): DateSpec | null =>
   value && typeof value === 'object' ? (value as DateSpec) : null
 const asRich = (value: unknown): RichText =>
   typeof value === 'string' || Array.isArray(value) ? (value as RichText) : ''
-const asRichList = (value: unknown): RichText[] => (Array.isArray(value) ? (value as RichText[]) : [])
 
 function Field({
   spec,
@@ -50,15 +49,7 @@ function Field({
           label={spec.label}
           value={asRich(item[spec.key])}
           placeholder={spec.placeholder}
-          onChange={set}
-        />
-      )
-    case 'richBullets':
-      return (
-        <RichBulletsField
-          label={spec.label}
-          value={asRichList(item[spec.key])}
-          placeholder={spec.placeholder}
+          emptyAs={spec.startsAsList ? 'bullet' : 'paragraph'}
           onChange={set}
         />
       )

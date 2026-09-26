@@ -295,7 +295,11 @@ item! {
         end: Option<DateSpec>,
         /// When true the end date is rendered as "Present" and `end` is ignored.
         current: bool,
-        bullets: Vec<RichText>,
+        /// The entry's highlights: one rich value like any other description,
+        /// so it can hold bullets, a numbered list or plain paragraphs. Older
+        /// documents stored one value per bullet and still load.
+        #[serde(deserialize_with = "crate::rich::highlights")]
+        bullets: RichText,
     }
 }
 

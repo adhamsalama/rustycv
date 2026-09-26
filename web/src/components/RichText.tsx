@@ -1,21 +1,14 @@
 import { useEffect } from 'react'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import {
-  bulletsToDoc,
-  docToBullets,
-  docToValue,
-  valueToDoc,
-  type EditorNode,
-  type RichText,
-} from '../rich'
+import { docToValue, valueToDoc, type BlockKind, type EditorNode, type RichText } from '../rich'
 
 /**
- * Only the marks the stored format can represent are enabled. Anything else a
- * user might paste in — headings, code blocks, tables — would be silently
- * dropped on save, so it is better not to offer it at all.
+ * Only the marks and blocks the stored format can represent are enabled.
+ * Anything else a user might paste in — headings, code blocks, tables — would be
+ * silently dropped on save, so it is better not to offer it at all.
  */
-const extensions = (withLists: boolean) => [
+const extensions = [
   StarterKit.configure({
     heading: false,
     blockquote: false,
@@ -23,13 +16,12 @@ const extensions = (withLists: boolean) => [
     code: false,
     strike: false,
     horizontalRule: false,
-    orderedList: false,
-    bulletList: withLists ? {} : false,
-    listItem: withLists ? {} : false,
-    listKeymap: withLists ? {} : false,
     link: { openOnClick: false },
   }),
 ]
+
+/** Two stored values, compared by content. */
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 function Toolbar({ editor }: { editor: Editor }) {
   // Subscribing to selection changes is what keeps the active states honest;
@@ -78,6 +70,12 @@ function Toolbar({ editor }: { editor: Editor }) {
         editor.chain().focus().toggleUnderline().run(),
       )}
       {button('🔗', 'Link', editor.isActive('link'), toggleLink)}
+      {button('•', 'Bulleted list', editor.isActive('bulletList'), () =>
+        editor.chain().focus().toggleBulletList().run(),
+      )}
+      {button('1.', 'Numbered list', editor.isActive('orderedList'), () =>
+        editor.chain().focus().toggleOrderedList().run(),
+      )}
     </div>
   )
 }
@@ -85,30 +83,18 @@ function Toolbar({ editor }: { editor: Editor }) {
 interface EditorShellProps {
   label: string
   doc: EditorNode
-  withLists: boolean
-  /** Reject Enter, for fields that hold a single value. */
-  singleParagraph?: boolean
+  /** Whether the editor already holds the value `doc` was built from. */
+  holdsValue: (current: EditorNode) => boolean
   onChange: (doc: EditorNode) => void
   placeholder?: string
 }
 
-function EditorShell({
-  label,
-  doc,
-  withLists,
-  singleParagraph,
-  onChange,
-  placeholder,
-}: EditorShellProps) {
+function EditorShell({ label, doc, holdsValue, onChange, placeholder }: EditorShellProps) {
   const editor = useEditor({
-    extensions: extensions(withLists),
+    extensions,
     content: doc,
     editorProps: {
       attributes: { class: 'rt-content', 'aria-label': label },
-      handleKeyDown: (_view, event) =>
-        // Returning true swallows the key. A one-value field has nowhere to put
-        // a second paragraph, so Enter would create content that is lost on save.
-        Boolean(singleParagraph) && event.key === 'Enter' && !event.shiftKey,
     },
     onUpdate: ({ editor }) => onChange(editor.getJSON() as EditorNode),
   })
@@ -117,13 +103,15 @@ function EditorShell({
   // different CV loaded — without disturbing the caret during normal typing.
   useEffect(() => {
     if (!editor) return
-    const incoming = JSON.stringify(doc)
-    if (incoming !== JSON.stringify(editor.getJSON())) {
+    if (!holdsValue(editor.getJSON() as EditorNode)) {
       editor.commands.setContent(doc, { emitUpdate: false })
     }
-    // Comparing serialized documents is what makes this safe to run on every
-    // render; keying off `doc` identity alone would fight the user's typing.
-  }, [editor, doc])
+    // The comparison is on the *stored value*, not on the two documents: TipTap
+    // fills in node defaults of its own (an ordered list carries `start`), so a
+    // shape comparison would differ forever and reset the caret on every
+    // keystroke. Keying off `doc` identity alone would fight the user's typing
+    // just as badly.
+  }, [editor, doc, holdsValue])
 
   useEffect(() => () => editor?.destroy(), [editor])
 
@@ -138,57 +126,36 @@ function EditorShell({
   )
 }
 
-/** One rich value — a summary, or an entry's description. */
+/**
+ * One rich value — a summary, a description, or an entry's highlights. Enter
+ * starts a new paragraph or the next list item; Shift+Enter is a line break
+ * inside the one being written.
+ *
+ * `emptyAs` opens an untouched field as a list rather than a paragraph, which
+ * is what highlights want.
+ */
 export function RichTextField({
   label,
   value,
   onChange,
   placeholder,
+  emptyAs,
 }: {
   label: string
   value: RichText
   onChange: (value: RichText) => void
   placeholder?: string
+  emptyAs?: BlockKind
 }) {
   return (
     <div className="field">
       <span className="field-label">{label}</span>
       <EditorShell
         label={label}
-        doc={valueToDoc(value)}
-        withLists={false}
-        singleParagraph
+        doc={valueToDoc(value, emptyAs)}
+        holdsValue={(current) => same(docToValue(current), value)}
         placeholder={placeholder}
         onChange={(doc) => onChange(docToValue(doc))}
-      />
-    </div>
-  )
-}
-
-/**
- * An entry's highlights: one editor holding a bullet list, so Enter starts the
- * next bullet the way it does in a document.
- */
-export function RichBulletsField({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string
-  value: RichText[]
-  onChange: (value: RichText[]) => void
-  placeholder?: string
-}) {
-  return (
-    <div className="field">
-      <span className="field-label">{label}</span>
-      <EditorShell
-        label={label}
-        doc={bulletsToDoc(value)}
-        withLists
-        placeholder={placeholder}
-        onChange={(doc) => onChange(docToBullets(doc))}
       />
     </div>
   )

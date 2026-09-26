@@ -14,7 +14,7 @@ mod section;
 mod theme;
 
 pub use date::DateSpec;
-pub use rich::{RichText, Run};
+pub use rich::{Block, BlockKind, RichText, Run};
 pub use section::{
     CertificationItem, EducationItem, EntryOrder, ExperienceItem, InterestItem, LanguageItem,
     ProjectItem, ReferenceItem, Section, SectionBody, SectionKind, SkillGroup,

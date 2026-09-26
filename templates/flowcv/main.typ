@@ -23,6 +23,9 @@
 // next bullet fixed.
 #let leading = theme.lineHeight * 0.5em
 #let section-gap = theme.sectionGapMm * 1mm
+// A 4px dot at FlowCV's 96dpi reference, i.e. a third of the text size. Shared
+// by an entry's highlights and any list inside a description.
+#let fc-marker = box(baseline: -0.24em, circle(radius: base * 0.16, fill: black))
 #let rule-grey = rgb("#cccccc")
 
 // FlowCV tints the heading band with 7% black regardless of accent. Deriving it
@@ -136,7 +139,7 @@
 }
 
 #if rich-nonempty(basics.summary) {
-  block(width: 100%, inset: (bottom: 0.4em), rich(basics.summary))
+  block(width: 100%, inset: (bottom: 0.4em), rich(basics.summary, gap: leading, marker: fc-marker))
 }
 
 // ------------------------------------------------------------- components
@@ -192,19 +195,18 @@
   fmt-range(it.at("start", default: none), it.at("end", default: none), current: it.at("current", default: false)),
 )
 
-// A 4px dot at FlowCV's 96dpi reference, i.e. a third of the text size.
-#let fc-bullets(items) = {
-  let items = items.filter(b => rich-nonempty(b))
-  if items.len() == 0 { return }
-  block(inset: (left: 0.8em), width: 100%, above: leading, below: leading, {
-    set list(
-      marker: box(baseline: -0.24em, circle(radius: base * 0.16, fill: black)),
-      indent: 0pt,
-      body-indent: 0.42em,
-      spacing: leading,
-    )
-    list(..items.map(b => rich(b)))
-  })
+// Highlights are a rich value like any other description — usually a bulleted
+// list, but paragraphs and a numbered list render here too. FlowCV's own
+// indents are kept: the block's 0.8em inset and the item's 0.42em body indent.
+#let fc-bullets(value) = {
+  if not rich-nonempty(value) { return }
+  block(
+    inset: (left: 0.8em),
+    width: 100%,
+    above: leading,
+    below: leading,
+    rich(value, gap: leading, marker: fc-marker, body-indent: 0.42em),
+  )
 }
 
 // Roles under a shared employer sit behind a single hairline that runs the
@@ -259,7 +261,7 @@
       fc-date(it),
     ))
     if rich-nonempty(it.at("description", default: "")) {
-      block(width: 100%, above: 0.3em, rich(it.description))
+      block(width: 100%, above: 0.3em, rich(it.description, gap: leading, marker: fc-marker))
     }
     v(0.5em, weak: true)
   }
@@ -280,11 +282,18 @@
 #let fc-projects(items) = {
   for it in items {
     // FlowCV's 8px at its 12px type size; in em so it follows the size slider.
+    let description = it.at("description", default: "")
+    // A one-line description reads on the name line; one carrying a list or a
+    // second paragraph has nowhere to sit there, so it drops below it.
+    let inline-description = rich-inlineable(description)
     block(width: 100%, below: 0.667em, {
       linked(it.at("url", default: ""), text(weight: 700, it.name))
-      if rich-nonempty(it.at("description", default: "")) { [, ] + rich(it.description) }
+      if inline-description and rich-nonempty(description) { [, ] + rich-inline(description) }
       let tech = it.at("tech", default: ()).filter(x => nonempty(x))
       if tech.len() > 0 { [ ] + text(style: "italic", tech.join(", ")) }
+      if not inline-description {
+        block(above: leading, below: 0pt, rich(description, gap: leading, marker: fc-marker))
+      }
     })
   }
 }

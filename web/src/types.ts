@@ -64,7 +64,7 @@ export interface ExperienceItem extends BaseItem {
   start: DateSpec | null
   end: DateSpec | null
   current: boolean
-  bullets: string[]
+  bullets: RichText
 }
 
 export interface SkillGroup extends BaseItem {
