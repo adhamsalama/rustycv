@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { AccountMenu } from '../components/AccountMenu'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { SiteFooter } from '../components/SiteFooter'
 import type { CvDocument } from '../types'
 
 export function Dashboard() {
@@ -136,6 +137,10 @@ export function Dashboard() {
           </li>
         ))}
       </ul>
+
+      <footer className="app-foot">
+        <SiteFooter />
+      </footer>
     </main>
   )
 }

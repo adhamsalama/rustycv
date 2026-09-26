@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { SiteFooter } from '../components/SiteFooter'
 
 /**
  * What a share link opens to. Outside `AuthGate` in `main.tsx` on purpose —
@@ -51,6 +52,9 @@ export function Share() {
           type="application/pdf"
           title={data?.title}
         />
+        <footer className="share-foot">
+          <SiteFooter />
+        </footer>
       </main>
     </div>
   )

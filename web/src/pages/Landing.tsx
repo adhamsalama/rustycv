@@ -1,5 +1,6 @@
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { AuthForm } from '../components/AuthForm'
+import { SiteFooter } from '../components/SiteFooter'
 
 /**
  * What a signed-out visitor sees.
@@ -108,6 +109,7 @@ export function Landing() {
         <p className="muted small">
           One binary and a SQLite file. Ten CVs and ten applications per account.
         </p>
+        <SiteFooter />
       </footer>
     </div>
   )

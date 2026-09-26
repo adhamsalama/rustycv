@@ -24,6 +24,7 @@ import type { Application, ApplicationInput, ApplicationStatus, CvSummary } from
 import { AccountMenu } from '../components/AccountMenu'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { JobCard } from '../components/JobCard'
+import { SiteFooter } from '../components/SiteFooter'
 
 const QUERY_KEY = ['applications']
 
@@ -158,6 +159,10 @@ export function Board() {
           ))}
         </div>
       </DndContext>
+
+      <footer className="app-foot">
+        <SiteFooter />
+      </footer>
     </main>
   )
 }

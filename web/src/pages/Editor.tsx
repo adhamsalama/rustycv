@@ -13,6 +13,7 @@ import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { ShareControl } from '../components/ShareControl'
+import { SiteFooter } from '../components/SiteFooter'
 import { SortableList, SortableRow } from '../components/Sortable'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
@@ -231,6 +232,10 @@ export function Editor() {
           <PdfPreview ref={previewRef} document={document} renderAt={renderAt} />
         </aside>
       </div>
+
+      <footer className="editor-foot">
+        <SiteFooter />
+      </footer>
     </div>
   )
 }
