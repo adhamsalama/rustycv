@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE: adhamsalama/rustycv
+  IMAGE: adham99/rustycv
 
 jobs:
   publish:

@@ -190,7 +190,7 @@ fonts, no Typst packages, no toolchain, because the render path only ever reads
 memory.
 
 ```sh
-docker run -p 8080:80 -v rustycv-data:/data adhamsalama/rustycv
+docker run -p 8080:80 -v rustycv-data:/data adham99/rustycv
 ```
 
 The volume is the point: `/data` holds the SQLite database, and without it your
