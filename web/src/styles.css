@@ -369,6 +369,33 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 }
 
 .account-menu { display: flex; align-items: center; gap: 8px; }
+
+/* A centred backdrop for small dialogs. The same scrim weight as .lightbox,
+   which is dark enough to read over in either scheme. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(24, 26, 30, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.dialog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, 100%);
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.dialog-card h2 { font-size: 15px; margin: 0 0 4px; }
+.dialog-card p { margin: 0; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 /* Long addresses truncate rather than pushing the buttons off the header. */
 .account-email { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

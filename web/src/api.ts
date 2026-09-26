@@ -57,6 +57,12 @@ export const api = {
   login: (email: string, password: string) =>
     request<User>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => request<void>('/auth/logout', { method: 'POST', body: '{}' }),
+  /** Keeps this session and drops every other one the account had. */
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('/auth/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
 
   templates: () => request<TemplateInfo[]>('/templates'),
   fonts: () => request<string[]>('/fonts'),

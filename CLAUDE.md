@@ -43,7 +43,7 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 105 tests
+cargo test --workspace              # 110 tests
 pnpm -C web test                    # 55, the rich-text conversions
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -191,8 +191,14 @@ kind — there are tests for both.
 ## Accounts
 
 Email plus an Argon2id hash, and an opaque session token in an HttpOnly cookie
-(`auth.rs`). No verification, no reset, no OAuth — each wants a mail sender this
-app does not have.
+(`auth.rs`). No verification, no *reset*, no OAuth — each wants a mail sender
+this app does not have. Changing a password is different: you are signed in
+already, so it needs no mail, and it evicts every session but the one asking.
+
+**A wrong current password answers 400, not 401.** The editor reads any 401 as
+"the session is gone" and drops to the landing page, so 401 there would throw
+someone out of the app over a typo in a form field. `shouldRecheckSession` in
+`web/src/session.ts` is the other half of that rule.
 
 **Every row belongs to an account, and the scope lives in the query.** `db.rs`
 and `jobs.rs` take a `user_id` argument and put `WHERE user_id = ?` on the

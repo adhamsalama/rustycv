@@ -44,6 +44,9 @@ pub fn router() -> Router<AppState> {
             put(update_application).delete(delete_application),
         )
         .route("/applications/{id}/move", post(move_application))
+        // Behind `require_auth` rather than beside the other auth routes: you
+        // change your own password, so there has to be a session saying whose.
+        .route("/auth/password", post(change_password))
         .layer(axum::middleware::from_fn(require_auth));
 
     public.merge(protected)
@@ -91,6 +94,17 @@ async fn logout(
 /// login form on screen.
 async fn me(user: CurrentUser) -> Json<User> {
     Json(user.0)
+}
+
+/// Change your own password, keeping this session and dropping the rest.
+async fn change_password(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Extension(SessionToken(token)): Extension<SessionToken>,
+    Json(change): Json<auth::PasswordChange>,
+) -> ApiResult<StatusCode> {
+    auth::change_password(&state.pool, user.id(), &token, &change).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn session_response(status: StatusCode, token: &str, user: User) -> Response {

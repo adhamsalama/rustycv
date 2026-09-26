@@ -281,6 +281,76 @@ pub async fn user_for_token(pool: &SqlitePool, token: &str) -> ApiResult<Option<
     }))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasswordChange {
+    #[serde(default)]
+    pub current_password: String,
+    #[serde(default)]
+    pub new_password: String,
+}
+
+/// Replace a password, and evict every session but the one asking.
+///
+/// Evicting the others is most of the point: someone changing a password
+/// because a machine was lost or borrowed needs the sessions on it to stop
+/// working, and a password change that left them alive would look like it had
+/// fixed something it had not. The caller's own session survives, so changing
+/// your password does not sign you out of the tab you did it in.
+///
+/// A wrong current password is a **400, not a 401** — deliberately. The editor
+/// treats any 401 as "the session is gone" and drops to the landing page, so
+/// answering 401 here would throw someone out of the app for a typo in a form
+/// field.
+pub async fn change_password(
+    pool: &SqlitePool,
+    user_id: &str,
+    keep_token: &str,
+    change: &PasswordChange,
+) -> ApiResult<()> {
+    let stored: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let parsed = PasswordHash::new(&stored).map_err(|e| {
+        tracing::error!(error = %e, "a stored password hash did not parse");
+        ApiError::Internal
+    })?;
+
+    Argon2::default()
+        .verify_password(change.current_password.as_bytes(), &parsed)
+        .map_err(|_| ApiError::BadRequest("your current password is not right".into()))?;
+
+    if change.new_password.chars().count() < MIN_PASSWORD {
+        return Err(ApiError::BadRequest(format!(
+            "a password needs at least {MIN_PASSWORD} characters"
+        )));
+    }
+
+    let hash = hash_password(&change.new_password)?;
+
+    // One transaction: a new password that had not yet evicted the old
+    // sessions would be a window where the change had not taken effect.
+    let mut tx = pool.begin().await?;
+
+    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(&hash)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+    sqlx::query("DELETE FROM sessions WHERE user_id = ? AND token <> ?")
+        .bind(user_id)
+        .bind(keep_token)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn delete_session(pool: &SqlitePool, token: &str) -> ApiResult<()> {
     sqlx::query("DELETE FROM sessions WHERE token = ?")
         .bind(token)

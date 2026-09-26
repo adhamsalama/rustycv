@@ -227,7 +227,7 @@ pushes to whatever `IMAGE` names at the top of the file.
 ## Tests
 
 ```sh
-cargo test --workspace     # 105 tests
+cargo test --workspace     # 110 tests
 pnpm -C web test           # 55 tests, the rich-text conversions
 pnpm -C web typecheck
 cargo clippy --workspace --all-targets -- -D warnings
@@ -320,6 +320,7 @@ and answers **401** without one.
 | -------------------- | ------------------------------ | ----------------------------------------------------- |
 | `POST`               | `/api/auth/signup`, `/api/auth/login` | create or open a session; sets the cookie      |
 | `POST`               | `/api/auth/logout`             | revoke this session                                   |
+| `POST`               | `/api/auth/password`           | change it; keeps this session, drops the others       |
 | `GET`                | `/api/auth/me`                 | the signed-in account, or 401                         |
 | `GET`                | `/api/templates`, `/api/fonts` | what the theme picker offers                          |
 | `GET` `POST`         | `/api/cvs`                     | list; create (`?from=<id>` duplicates)                |

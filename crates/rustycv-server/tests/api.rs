@@ -1032,3 +1032,147 @@ async fn the_first_account_adopts_cvs_that_predate_accounts() {
         .await;
     assert_eq!(cvs.as_array().unwrap().len(), 0, "{cvs}");
 }
+
+// --------------------------------------------------------- password change
+
+/// Sign in as `email` and return the session cookie, without disturbing
+/// whoever the app is currently signed in as.
+async fn sign_in(app: &TestApp, email: &str, password: &str) -> Option<String> {
+    let response = app
+        .response_as(
+            None,
+            Request::builder()
+                .method("POST")
+                .uri("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"email": email, "password": password}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await;
+    (response.status() == StatusCode::OK)
+        .then(|| session_cookie(&response))
+        .flatten()
+}
+
+#[tokio::test]
+async fn a_changed_password_is_the_only_one_that_works_afterwards() {
+    let app = TestApp::new().await;
+
+    let (status, _) = app
+        .json(
+            "POST",
+            "/api/auth/password",
+            json!({"currentPassword": PASSWORD, "newPassword": "a-whole-new-password"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    assert!(
+        sign_in(&app, "owner@example.com", PASSWORD).await.is_none(),
+        "the old password should stop working"
+    );
+    assert!(
+        sign_in(&app, "owner@example.com", "a-whole-new-password")
+            .await
+            .is_some(),
+        "the new password should work"
+    );
+}
+
+#[tokio::test]
+async fn changing_a_password_evicts_every_other_session() {
+    // The reason someone changes a password is often that another machine has
+    // one of these. A change that left them working would look like it had
+    // fixed something it had not.
+    let app = TestApp::new().await;
+    let elsewhere = sign_in(&app, "owner@example.com", PASSWORD)
+        .await
+        .expect("a second session");
+
+    let (status, _) = app
+        .json(
+            "POST",
+            "/api/auth/password",
+            json!({"currentPassword": PASSWORD, "newPassword": "a-whole-new-password"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) = app
+        .json_as(Some(&elsewhere), "GET", "/api/auth/me", json!({}))
+        .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "the other session is gone"
+    );
+
+    // But not the one that asked: changing your password should not sign you
+    // out of the tab you changed it in.
+    let (status, _) = app.json("GET", "/api/auth/me", json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_wrong_current_password_is_a_400_and_changes_nothing() {
+    let app = TestApp::new().await;
+
+    let (status, body) = app
+        .json(
+            "POST",
+            "/api/auth/password",
+            json!({"currentPassword": "not-it", "newPassword": "a-whole-new-password"}),
+        )
+        .await;
+
+    // 400 rather than 401 on purpose: the editor reads any 401 as "the session
+    // is gone" and drops to the landing page, so a typo in a form field would
+    // throw the user out of the app mid-change.
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    assert!(
+        sign_in(&app, "owner@example.com", PASSWORD).await.is_some(),
+        "the password should be untouched"
+    );
+    assert!(
+        sign_in(&app, "owner@example.com", "a-whole-new-password")
+            .await
+            .is_none(),
+        "the rejected password should not have been written"
+    );
+}
+
+#[tokio::test]
+async fn a_new_password_still_has_to_clear_the_floor() {
+    let app = TestApp::new().await;
+
+    let (status, _) = app
+        .json(
+            "POST",
+            "/api/auth/password",
+            json!({"currentPassword": PASSWORD, "newPassword": "short"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    assert!(
+        sign_in(&app, "owner@example.com", PASSWORD).await.is_some(),
+        "the old password should still be the password"
+    );
+}
+
+#[tokio::test]
+async fn changing_a_password_needs_a_session() {
+    let app = TestApp::signed_out().await;
+    let (status, _) = app
+        .json_as(
+            None,
+            "POST",
+            "/api/auth/password",
+            json!({"currentPassword": PASSWORD, "newPassword": "a-whole-new-password"}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PasswordDialog } from './PasswordDialog'
 import { ME } from '../session'
 
 /**
@@ -10,6 +12,7 @@ import { ME } from '../session'
  */
 export function AccountMenu() {
   const queryClient = useQueryClient()
+  const [changingPassword, setChangingPassword] = useState(false)
   const { data: user } = useQuery({ queryKey: [ME], queryFn: api.me })
 
   const signOut = useMutation({
@@ -24,6 +27,9 @@ export function AccountMenu() {
       <span className="muted small account-email" title={user.email}>
         {user.email}
       </span>
+      <button type="button" className="ghost" onClick={() => setChangingPassword(true)}>
+        Password
+      </button>
       <button
         type="button"
         className="ghost"
@@ -32,6 +38,7 @@ export function AccountMenu() {
       >
         Sign out
       </button>
+      {changingPassword ? <PasswordDialog onClose={() => setChangingPassword(false)} /> : null}
     </div>
   )
 }
