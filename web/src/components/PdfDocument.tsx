@@ -121,6 +121,27 @@ function ask(request: RasterRequest): Promise<Rastered | 'stale'> {
   })
 }
 
+/**
+ * Start the worker before there is anything to draw.
+ *
+ * It is 428kB of pdf.js plus a 1.2MB parser, fetched and compiled the first
+ * time a page is rasterised — which without this is the moment the first PDF
+ * arrives, so the two queue up instead of overlapping. Called when the editor
+ * opens, where it runs alongside fetching the CV and rendering it.
+ *
+ * Safe to call repeatedly, and safe to call on a browser that cannot use it:
+ * the guard is the same one `rasterise` uses.
+ */
+export function warmRasteriser(): void {
+  if (rasteriserBroken || typeof OffscreenCanvas === 'undefined') return
+  try {
+    rasteriserWorker()
+  } catch {
+    // Nothing is waiting on this; a worker that will not start is found
+    // again, and reported, on the first real render.
+  }
+}
+
 /** A canvas that *holds* a bitmap. `transferFromImageBitmap` sizes it too. */
 function adopt(bitmap: ImageBitmap): HTMLCanvasElement {
   const canvas = document.createElement('canvas')

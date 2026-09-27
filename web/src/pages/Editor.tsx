@@ -11,6 +11,7 @@ import { BasicsEditor } from '../components/BasicsEditor'
 import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
+import { warmRasteriser } from '../components/PdfDocument'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { DownloadPdf } from '../components/DownloadPdf'
 import { ShareControl } from '../components/ShareControl'
@@ -84,6 +85,12 @@ export function Editor() {
     queryFn: api.config,
     staleTime: Infinity,
   })
+
+  // Start fetching and compiling the PDF rasteriser now, so it is not still
+  // arriving when the first render comes back.
+  useEffect(() => {
+    warmRasteriser()
+  }, [])
 
   useEffect(() => {
     if (data) store.load(data.id, data.title, data.document)
