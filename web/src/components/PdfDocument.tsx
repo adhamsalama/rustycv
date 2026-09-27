@@ -21,18 +21,35 @@ import { useEffect, useRef, useState } from 'react'
  * someone else's furniture around it beats no preview.
  */
 
-/** Resolved once per page load: pdf.js and its worker are megabytes, and only
- *  the editor's preview ever wants them. */
-let pdfjs: Promise<typeof import('pdfjs-dist')> | null = null
+/**
+ * pdf.js, and **one** worker to run every document through.
+ *
+ * Resolved once per page load: the library and its worker are 1.7MB between
+ * them (0.4MB over the wire) and only the editor's preview ever wants them, so
+ * both are imported lazily and split into their own chunks.
+ *
+ * The worker is shared on purpose. `getDocument` creates a fresh `PDFWorker`
+ * when it is not handed one and `task.destroy()` terminates it again — which
+ * across a typing session means spawning and killing a worker over a 1.2MB
+ * script on every settle, for no reason: the document changes on each edit,
+ * the thing parsing it need not. Passing our own also leaves `task._worker`
+ * null, so `destroy()` tears down the document and leaves the worker standing.
+ */
+let pdfjs: Promise<{
+  lib: typeof import('pdfjs-dist')
+  worker: import('pdfjs-dist').PDFWorker
+}> | null = null
 
-function loadPdfjs(): Promise<typeof import('pdfjs-dist')> {
+function loadPdfjs() {
   pdfjs ??= (async () => {
-    const [lib, worker] = await Promise.all([
+    const [lib, workerUrl] = await Promise.all([
       import('pdfjs-dist'),
       import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
     ])
-    lib.GlobalWorkerOptions.workerSrc = worker.default
-    return lib
+    lib.GlobalWorkerOptions.workerSrc = workerUrl.default
+    // No arguments: pdf.js's generated types mistype `name` as
+    // `null | undefined`, and the default worker is what we want anyway.
+    return { lib, worker: new lib.PDFWorker() }
   })()
   return pdfjs
 }
@@ -82,11 +99,11 @@ export function PdfDocument({
 
     void (async () => {
       try {
-        const lib = await loadPdfjs()
+        const { lib, worker } = await loadPdfjs()
         // A fresh ArrayBuffer per call: pdf.js may transfer the one it is
         // given to its worker, which detaches it for everybody else —
         // including the second copy of this component that expanding mounts.
-        task = lib.getDocument({ data: await blob.arrayBuffer() })
+        task = lib.getDocument({ data: await blob.arrayBuffer(), worker })
         const document_ = await task.promise
         if (cancelled) return
         report.current?.(document_.numPages)
