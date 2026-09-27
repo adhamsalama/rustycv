@@ -11,9 +11,15 @@ import { ApiError } from '../api'
 import { renderPdf } from '../renderer'
 import type { CvDocument, Diagnostic, RenderMode } from '../types'
 import { Icon } from './Icon'
+import { PdfDocument } from './PdfDocument'
 
 interface PreviewState {
+  /** The rendered PDF. Drawn from these bytes, and downloaded as them. */
+  blob: Blob | null
+  /** The same bytes as a URL, for PdfDocument's iframe fallback. */
   url: string | null
+  /** What the render turned out to be, once pdf.js has opened it. */
+  pages: number
   pending: boolean
   diagnostics: Diagnostic[]
   error: string | null
@@ -42,7 +48,9 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
   const close = useCallback(() => setExpanded(false), [])
   useImperativeHandle(ref, () => ({ expand: () => setExpanded(true) }), [])
   const [state, setState] = useState<PreviewState>({
+    blob: null,
     url: null,
+    pages: 0,
     pending: true,
     diagnostics: [],
     error: null,
@@ -68,7 +76,11 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
           // the new one makes the preview flash blank on every edit.
           if (previous.url) URL.revokeObjectURL(previous.url)
           return {
+            blob,
             url,
+            // Kept until the new one is counted, so the chip does not blink
+            // back to nothing on every edit.
+            pages: previous.pages,
             pending: false,
             diagnostics: [],
             error: null,
@@ -143,10 +155,8 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
         </ul>
       ) : null}
 
-      {state.url ? (
+      {state.blob && state.url ? (
         <>
-          {/* The iframe swallows clicks into the PDF viewer, so expanding needs
-              its own control rather than a click handler on the preview. */}
           <button
             type="button"
             className="preview-expand"
@@ -156,17 +166,25 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
           >
             <Icon name="expand" />
           </button>
-          <iframe
-            className="preview-frame"
-            title="CV preview"
-            src={`${state.url}#toolbar=0&view=FitH`}
+          <PdfDocument
+            blob={state.blob}
+            url={state.url}
+            label="CV preview"
+            onPages={(pages) =>
+              setState((previous) => (previous.pages === pages ? previous : { ...previous, pages }))
+            }
           />
+          {state.pages > 0 ? (
+            <span className="page-chip">
+              {state.pages} {state.pages === 1 ? 'page' : 'pages'}
+            </span>
+          ) : null}
         </>
       ) : (
         <div className="preview-empty">{state.error ? 'No preview' : 'Rendering your CV…'}</div>
       )}
 
-      {expanded ? <ExpandedPreview url={state.url} onClose={close} /> : null}
+      {expanded ? <ExpandedPreview blob={state.blob} url={state.url} onClose={close} /> : null}
     </div>
   )
 })
@@ -178,7 +196,15 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
  * `overflow` can clip it, and reusing the preview's existing blob URL so
  * opening it costs nothing and it keeps updating as you edit.
  */
-function ExpandedPreview({ url, onClose }: { url: string | null; onClose: () => void }) {
+function ExpandedPreview({
+  blob,
+  url,
+  onClose,
+}: {
+  blob: Blob | null
+  url: string | null
+  onClose: () => void
+}) {
   const closeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -215,8 +241,8 @@ function ExpandedPreview({ url, onClose }: { url: string | null; onClose: () => 
         <Icon name="close" />
       </button>
       <div className="lightbox-sheet">
-        {url ? (
-          <iframe className="lightbox-frame" title="Full CV preview" src={`${url}#toolbar=0&view=FitH`} />
+        {blob && url ? (
+          <PdfDocument blob={blob} url={url} label="Full CV preview" />
         ) : (
           <div className="centered">Rendering your CV…</div>
         )}

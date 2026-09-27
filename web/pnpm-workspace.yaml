@@ -2,3 +2,11 @@ allowBuilds:
   esbuild: true
 # esbuild ships a postinstall that fetches its platform binary; Vite is unusable
 # without it.
+
+ignoredOptionalDependencies:
+  # pdfjs-dist optionally pulls @napi-rs/canvas so that pdf.js can rasterise a
+  # page in *Node*. Nothing here does: the preview renders in a tab, on a
+  # <canvas> the DOM already provides. Left alone it puts a native binary in
+  # node_modules and the whole platform matrix — android, darwin, linux
+  # glibc/musl, win32 — in the lockfile, for code no build can reach.
+  - '@napi-rs/canvas'

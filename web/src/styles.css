@@ -152,6 +152,10 @@
   --shadow-2: light-dark(rgba(60, 56, 40, 0.11), rgba(0, 0, 0, 0.38));
   --shadow-card: 0 1px 2px var(--shadow-1);
   --shadow-lift: 0 1px 2px var(--shadow-1), 0 8px 26px var(--shadow-2);
+  /* Heavier than the app's own, and not tinted: this one is under a sheet of
+     white paper lying on the surround, not under a panel. */
+  --shadow-paper: 0 1px 2px light-dark(rgba(50, 46, 34, 0.22), rgba(0, 0, 0, 0.65)),
+    0 10px 28px light-dark(rgba(50, 46, 34, 0.17), rgba(0, 0, 0, 0.5));
 
   /* Inter and Source Serif 4 are the families the CV itself can be set in.
      Neither is served yet, so both stacks resolve to something sane today and
@@ -386,7 +390,18 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .field.add-section { margin: 16px 2px 0; width: auto; }
 
 .pane { overflow-y: auto; padding: 26px 24px; min-width: 0; }
-.preview-pane { border-left: 1px solid var(--border); background: var(--paper-surround); min-width: 0; display: flex; }
+.preview-pane {
+  border-left: 1px solid var(--border);
+  /* A pool of light behind the page rather than a flat slab. The paper is
+     white in every palette, so this is where the palette gets to show up. */
+  background: radial-gradient(
+    120% 70% at 50% 14%,
+    color-mix(in srgb, var(--accent) 11%, var(--paper-surround)),
+    var(--paper-surround) 72%
+  );
+  min-width: 0;
+  display: flex;
+}
 .outline-scrim { display: none; }
 
 /* ------------------------------------------------------------- editing */
@@ -526,6 +541,39 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .badge-error { background: var(--danger); }
 .badge-notice { background: var(--notice); }
 .preview-frame { flex: 1; width: 100%; border: none; background: var(--paper-surround); }
+
+/* Drawn by pdf.js onto one canvas per page — see PdfDocument. The canvas is
+   sized in device pixels and laid out in CSS pixels, so `width: 100%` is what
+   makes it crisp on a retina display rather than merely large. */
+.pdf-scroll { flex: 1; min-width: 0; overflow: auto; padding: 24px 20px 34px; }
+.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+.pdf-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* Paper. White in both schemes, because that is the page. */
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: var(--shadow-paper);
+}
+
+/* Sits over the page rather than beside it: the one number people keep
+   checking, without spending a row of chrome on it. */
+.page-chip {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  font: 500 var(--text-xs)/1 var(--font-ui);
+  color: var(--text);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(6px);
+  padding: 6px 12px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-card);
+  pointer-events: none;
+}
 .preview-empty { flex: 1; display: grid; place-items: center; color: var(--muted); }
 
 /* Sits above the iframe, which cannot be clicked through. */
@@ -560,17 +608,15 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 }
 .lightbox-sheet {
   width: min(900px, 100%);
-  /* Fill the viewport and let the PDF viewer scroll through pages itself.
-     Sizing the sheet to A4 instead would make it taller than the screen and
-     give you two nested scrollbars. */
+  /* Fill the viewport and let the pages scroll inside it. Sizing the sheet to
+     A4 instead would make it taller than the screen and give you two nested
+     scrollbars. */
   height: 100%;
-  /* Paper, not chrome: white in both schemes, because that is the page. */
-  background: #fff;
-  border-radius: 6px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+  display: flex;
+  /* No paper here: each page carries its own, so a two-page CV reads as two
+     sheets rather than one long white strip. */
   overflow: hidden;
 }
-.lightbox-frame { width: 100%; height: 100%; border: none; display: block; }
 .lightbox-close {
   position: fixed;
   top: 16px;

@@ -14,7 +14,10 @@ Two corollaries that are load-bearing:
 - **Preview and download go through one render path** (`render_pdf`). The
   preview is exactly the output. Do not add a second, faster, approximate one.
   Rendering in the browser is not one: it is that same function compiled to
-  wasm, and the fixture comes out to the same SHA-256 through both.
+  wasm, and the fixture comes out to the same SHA-256 through both. Neither is
+  `PdfDocument`: pdf.js *rasterises* the finished bytes for the screen, the
+  way the browser's viewer did before it, and the download hands over the same
+  `Blob` it was given. Drawing a page is not producing one.
 - **The Typst `World` serves only memory** — the template, the icons, the CV.
   No filesystem, no packages. That is what makes running templates safe, so
   don't add a loader that reaches outside `CvWorld`.
@@ -249,6 +252,42 @@ the only visible sign a module is missing or broken.
 is sent the PDF and never the document, so there is nothing in the page to
 render from — and rendering locally would trade a cache hit for a 30 MB
 download and a cold compile.
+
+## The preview
+
+The editor draws the PDF itself, on one `<canvas>` per page (`PdfDocument`),
+rather than handing the bytes to an `<iframe>`.
+
+**`#toolbar=0` is a Chromium parameter.** Firefox's pdf.js ignores it and so
+does Safari, so an iframe gave a Firefox user a search box, a page spinner, a
+zoom menu and five annotation tools wrapped around a document that is thrown
+away on the next keystroke. That is the whole reason for the change; the three
+things it buys are consequences. The page count is one (`/api` never knew it —
+only the renderer did). A scroll position that survives an edit is the second:
+the pages are swapped in a single `replaceChildren`, so the container never
+collapses, where changing an iframe's `src` sent every edit back to the top.
+A shadow under the paper is the third.
+
+**It falls back to the iframe**, toolbar and all, if pdf.js will not load or
+the bytes will not open — the same direction as the wasm renderer's fallback,
+and for the same reason: a preview with someone else's furniture round it
+beats no preview.
+
+pdf.js and its worker are **lazy-imported** so only the editor pays for them;
+the dashboard and the landing page never load either. `@napi-rs/canvas` is in
+`ignoredOptionalDependencies` — pdfjs-dist wants it to rasterise in *Node*,
+which nothing here does, and left alone it puts a native binary in
+`node_modules` and the whole platform matrix in the lockfile.
+
+**The worker is a `.mjs`.** The Dockerfile's precompression step matches
+extensions by name, so that one had to be added to the list; at 1.2MB it is
+the largest thing the editor loads after the wasm module, and an extension
+missing from that `find` is a file served raw with no symptom but a slow first
+preview.
+
+The *share* page still uses `<embed>` and the browser's own viewer on purpose.
+A visitor holding a link wants print and download, and should not fetch pdf.js
+to read one page once.
 
 ## Editor appearance
 
