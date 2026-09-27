@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import { ApiError } from '../api'
 import { renderPdf } from '../renderer'
 import type { CvDocument, Diagnostic, RenderMode } from '../types'
+import { Icon } from './Icon'
 
 interface PreviewState {
   url: string | null
@@ -21,7 +22,7 @@ interface PreviewState {
 }
 
 /** Lets a control outside this component (the topbar's small-screen "Preview"
- * button) open the same full-CV overlay as the ⤢ icon and the "e" shortcut. */
+ * button) open the same full-CV overlay as the expand icon and the "e" shortcut. */
 export interface PdfPreviewHandle {
   expand: () => void
 }
@@ -153,7 +154,7 @@ export const PdfPreview = forwardRef<PdfPreviewHandle, {
             title="Open the full CV (or press E)"
             aria-label="Open the full CV"
           >
-            ⤢
+            <Icon name="expand" />
           </button>
           <iframe
             className="preview-frame"
@@ -211,7 +212,7 @@ function ExpandedPreview({ url, onClose }: { url: string | null; onClose: () => 
         onClick={onClose}
         aria-label="Close preview"
       >
-        ✕
+        <Icon name="close" />
       </button>
       <div className="lightbox-sheet">
         {url ? (

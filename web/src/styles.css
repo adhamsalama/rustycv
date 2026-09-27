@@ -1,43 +1,177 @@
-/* Every colour is one `light-dark()` pair, so a token is defined once and the
-   two schemes cannot drift apart. Which half applies is decided by the used
-   `color-scheme` below — `light dark` means "follow the OS", and the two
-   attribute rules are the explicit override the toggle sets. Nothing else in
-   this file may name a literal colour that differs between the schemes; the
-   exceptions are the CV's own paper (always white — it is a printed page) and
-   overlay scrims, which work over either. */
-:root {
-  color-scheme: light dark;
+/* Colour here is two layers.
+ *
+ * A **palette** sets eleven base tokens and nothing else. `:root` carries the
+ * default one (Everforest) and each `[data-palette]` block replaces the same
+ * eleven, so a palette is a flat list with no rules of its own to get out of
+ * step. Every token is a `light-dark()` pair, which is what keeps the two
+ * schemes from drifting: the palette is chosen independently of light/dark and
+ * has to work in both.
+ *
+ * Everything else is **derived** from those eleven with `color-mix`, so a new
+ * palette cannot forget to tint a hover state or a focus ring — there is
+ * nowhere to forget it. `every palette defines every base token` in
+ * theme.test.ts fails on an incomplete one, and `names no scheme-specific
+ * colour outside the tokens` fails on a literal written anywhere below.
+ *
+ * `--accent` is the one token a user can override (the accent picker), which
+ * is why it reads through `--accent-user` first. That variable is set inline
+ * on the root element by `applyAccent`, so an unset one falls through to the
+ * palette with no JavaScript needed to put it back.
+ */
 
+/* ==== palette tokens: start ==== */
+:root { color-scheme: light dark; }
+
+/* `:root` and a bare attribute selector, so a palette's tokens resolve on any
+   element wearing it — which is how the picker's swatches paint themselves in
+   a palette that is not the one currently on. */
+:root, [data-palette='everforest'] {
+  /* Everforest, the default. Its light half is deliberately not white: the
+     page is cream and the surface is one step off it rather than jumping to
+     #fff, which is most of why the scheme reads the way it does. */
+  --bg: light-dark(#fdf6e3, #2d353b);
+  --surface: light-dark(#f4f0d9, #343f44);
+  --raised: light-dark(#efebd4, #3d484d);
+  --border: light-dark(#e0dcc7, #475258);
+  --text: light-dark(#5c6a72, #d3c6aa);
+  --strong: light-dark(#4b565d, #e3dbc7);
+  --muted: light-dark(#939f91, #859289);
+  --accent-base: light-dark(#8da101, #a7c080);
+  --accent-ink-base: light-dark(#fdf6e3, #2d353b);
+  --danger: light-dark(#f85552, #e67e80);
+  /* Behind the rendered page. Darker than the app so white paper reads as
+     paper rather than as another panel. */
+  --paper-surround: light-dark(#e6e2cc, #232a2e);
+}
+
+[data-palette='gruvbox'] {
+  --bg: light-dark(#f2e5bc, #1d2021);
+  --surface: light-dark(#fbf1c7, #282828);
+  --raised: light-dark(#ebdbb2, #3c3836);
+  --border: light-dark(#d5c4a1, #504945);
+  --text: light-dark(#3c3836, #ebdbb2);
+  --strong: light-dark(#282828, #fbf1c7);
+  --muted: light-dark(#7c6f64, #928374);
+  --accent-base: light-dark(#b57614, #fabd2f);
+  --accent-ink-base: light-dark(#fbf1c7, #282828);
+  --danger: light-dark(#cc241d, #fb4934);
+  --paper-surround: light-dark(#d5c4a1, #141617);
+}
+
+[data-palette='rosepine'] {
+  --bg: light-dark(#faf4ed, #191724);
+  --surface: light-dark(#fffaf3, #1f1d2e);
+  --raised: light-dark(#f2e9e1, #26233a);
+  --border: light-dark(#dfdad9, #403d52);
+  --text: light-dark(#575279, #e0def4);
+  --strong: light-dark(#433c62, #f0eefb);
+  --muted: light-dark(#9893a5, #908caa);
+  --accent-base: light-dark(#907aa9, #c4a7e7);
+  --accent-ink-base: light-dark(#fffaf3, #191724);
+  --danger: light-dark(#b4637a, #eb6f92);
+  --paper-surround: light-dark(#ece2d8, #12101c);
+}
+
+[data-palette='kanagawa'] {
+  --bg: light-dark(#e9e0b4, #1f1f28);
+  --surface: light-dark(#f2ecbc, #2a2a37);
+  --raised: light-dark(#e7dba0, #363646);
+  --border: light-dark(#d5cea3, #444458);
+  --text: light-dark(#545464, #dcd7ba);
+  --strong: light-dark(#43436c, #f2eee3);
+  --muted: light-dark(#8a8980, #727169);
+  --accent-base: light-dark(#4d699b, #7e9cd8);
+  --accent-ink-base: light-dark(#f2ecbc, #1f1f28);
+  --danger: light-dark(#c84053, #e46876);
+  --paper-surround: light-dark(#dcd39f, #16161d);
+}
+
+[data-palette='violet'] {
+  --bg: light-dark(#f7f6fb, #0d0c12);
+  --surface: light-dark(#ffffff, #17151f);
+  --raised: light-dark(#f2f0f9, #201d2b);
+  --border: light-dark(#e6e2f2, #2a2637);
+  --text: light-dark(#171426, #ece9f5);
+  --strong: light-dark(#3a3352, #c8c2dd);
+  --muted: light-dark(#6a6483, #9d96b5);
+  --accent-base: light-dark(#6d4aff, #9b8cff);
+  --accent-ink-base: light-dark(#ffffff, #120d24);
+  --danger: light-dark(#d1344b, #ff8098);
+  --paper-surround: light-dark(#e6e4ee, #0a090e);
+}
+
+/* What the app looked like before palettes existed, for anyone who wants it
+   back. Neutral greys and a stock blue — kept honest rather than tidied. */
+[data-palette='classic'] {
   --bg: light-dark(#f6f7f9, #15171c);
   --surface: light-dark(#ffffff, #1c1f26);
+  --raised: light-dark(#fafbfc, #232830);
   --border: light-dark(#e3e6ea, #2b303a);
   --text: light-dark(#16191d, #e7e9ec);
+  --strong: light-dark(#2a2f36, #d3d7dd);
   --muted: light-dark(#6b7280, #99a1ad);
-  --accent: light-dark(#2563eb, #7aa2f7);
-  /* Text set *on* --accent. The dark accent is light enough that white would
-     wash out against it. */
-  --accent-ink: light-dark(#ffffff, #10141c);
-  /* The accent at surface weight: selected rows, active toolbar buttons. */
-  --accent-soft: light-dark(#e8eefc, #20304f);
-  --focus-ring: light-dark(#c7d7fb, #2f4a80);
+  --accent-base: light-dark(#2563eb, #7aa2f7);
+  --accent-ink-base: light-dark(#ffffff, #10141c);
   --danger: light-dark(#b42318, #f0736a);
-  --hover: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.07));
-  /* Behind the rendered page: darker than the app so white paper reads as
-     paper rather than as another panel. */
   --paper-surround: light-dark(#eceef1, #0d0f13);
-  --stripe: light-dark(#fafbfc, #232830);
-  /* Neither fine nor broken: the badge for a render that was asked for in the
-     browser and happened on the server anyway. */
-  --notice: light-dark(#b45309, #c98a1e);
-  --warn-bg: light-dark(#fdecea, #3a1d1a);
-  --warn-border: light-dark(#f5c6c0, #5c2f2a);
-  --warn-text: light-dark(#7a271a, #ffb4ab);
-
-  --radius: 8px;
 }
 
 :root[data-appearance='light'] { color-scheme: light; }
 :root[data-appearance='dark'] { color-scheme: dark; }
+
+/* Derived from the eleven above, never set by a palette.
+ *
+ * `--accent-user` is the accent picker's override, written as an inline
+ * custom property by `applyAccent`. Unset it and the palette's own accent is
+ * back, which is what makes "Match palette" a deletion rather than a lookup. */
+:root {
+  --accent: var(--accent-user, var(--accent-base));
+  --accent-ink: var(--accent-ink-user, var(--accent-ink-base));
+  /* The accent at surface weight: selected rows, active toolbar buttons. */
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  /* Barely there — a wash over a large area, for the topbar and the outline. */
+  --accent-wash: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  --hover: color-mix(in srgb, var(--accent) 12%, transparent);
+  --focus-ring: color-mix(in srgb, var(--accent) 30%, transparent);
+  --glow: color-mix(in srgb, var(--accent) 34%, transparent);
+  --stripe: color-mix(in srgb, var(--text) 5%, var(--surface));
+  --warn-bg: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  --warn-border: color-mix(in srgb, var(--danger) 32%, var(--surface));
+  --warn-text: color-mix(in srgb, var(--danger) 78%, var(--text));
+
+  /* Neither fine nor broken: the badge for a render that was asked for in the
+     browser and happened on the server anyway. Semantic rather than
+     decorative, so it is the same amber whichever palette is on. */
+  --notice: light-dark(#b45309, #c98a1e);
+
+  /* Shadows are built out of a tinted colour rather than wrapped in
+     `light-dark()` — that function takes a <color>, and wrapping a whole
+     shadow value in it makes the declaration invalid and drops the shadow
+     entirely, with no warning anywhere. */
+  --shadow-1: light-dark(rgba(60, 56, 40, 0.10), rgba(0, 0, 0, 0.45));
+  --shadow-2: light-dark(rgba(60, 56, 40, 0.11), rgba(0, 0, 0, 0.38));
+  --shadow-card: 0 1px 2px var(--shadow-1);
+  --shadow-lift: 0 1px 2px var(--shadow-1), 0 8px 26px var(--shadow-2);
+
+  /* Inter and Source Serif 4 are the families the CV itself can be set in.
+     Neither is served yet, so both stacks resolve to something sane today and
+     pick the real face up the moment one is. */
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Source Serif 4', ui-serif, 'Iowan Old Style', Palatino, Georgia, serif;
+
+  /* A scale with somewhere to go. The old one spanned 9px end to end, which
+     is why hierarchy had to be done with borders. */
+  --text-xs: 11.5px;
+  --text-sm: 13px;
+  --text-base: 14.5px;
+  --text-lg: 17px;
+  --text-xl: 25px;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --ease: 120ms cubic-bezier(0.2, 0.6, 0.3, 1);
+}
+/* ==== palette tokens: end ==== */
 
 * { box-sizing: border-box; }
 
@@ -45,75 +179,104 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: var(--text-base)/1.5 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
 }
 
-h1 { font-size: 22px; margin: 0 0 4px; }
-h2 { font-size: 16px; margin: 0; }
-h3 { font-size: 13px; margin: 0; }
+h1 { font: 600 var(--text-xl)/1.15 var(--font-display); letter-spacing: -0.015em; margin: 0 0 6px; }
+h2 { font-size: var(--text-lg); margin: 0; letter-spacing: -0.01em; }
+h3 { font-size: var(--text-sm); margin: 0; }
 
 .muted { color: var(--muted); }
-.small { font-size: 12px; }
+.small { font-size: var(--text-sm); }
 .spacer { flex: 1; }
 .centered { display: grid; place-items: center; min-height: 60vh; color: var(--muted); }
+
+.icon { width: 16px; height: 16px; flex-shrink: 0; }
+.icon-sm { width: 14px; height: 14px; }
 
 /* ------------------------------------------------------------- buttons */
 
 button, .primary, .secondary, .ghost {
-  font: inherit;
-  border-radius: 6px;
+  font: 500 var(--text-sm)/1.2 var(--font-ui);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 7px 11px;
   border: 1px solid transparent;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  transition: background var(--ease), color var(--ease), border-color var(--ease),
+    box-shadow var(--ease);
 }
 
-.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 600;
+  box-shadow: 0 1px 2px var(--shadow-1), 0 4px 14px var(--glow);
+}
+.primary:hover { filter: brightness(1.08); }
 .secondary { background: var(--surface); border-color: var(--border); color: var(--text); }
+.secondary:hover { background: var(--raised); }
 .ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .ghost:hover { background: var(--hover); color: var(--text); }
-.appearance-toggle { width: 30px; height: 28px; padding: 0; justify-content: center; font-size: 14px; line-height: 1; }
+/* Square, for a button that is only an icon. */
+.icon-btn { padding: 7px; }
+.appearance-toggle { padding: 7px; }
 button:disabled { opacity: 0.55; cursor: default; }
-button:disabled:hover { background: transparent; color: var(--muted); }
-.danger:hover { color: var(--danger); }
+button:disabled:hover { background: transparent; color: var(--muted); filter: none; }
+.danger:hover { color: var(--danger); background: var(--warn-bg); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ----------------------------------------------------------- dashboard */
 
-.dashboard { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; }
-.dashboard-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; }
+.dashboard { max-width: 1000px; margin: 0 auto; padding: 36px 20px 64px; }
+.dashboard-head { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 28px; flex-wrap: wrap; }
 .dashboard-head > div:first-child { flex: 1; min-width: 260px; }
 .dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-left: 8px; padding-left: 16px; border-left: 1px solid var(--border); }
 
-.cv-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
-.cv-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; }
-.cv-card-main { padding: 14px; color: inherit; text-decoration: none; flex: 1; }
+.cv-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.cv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow var(--ease), border-color var(--ease), transform var(--ease);
+}
+.cv-card:hover { box-shadow: var(--shadow-lift); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+.cv-card-main { padding: 16px; color: inherit; text-decoration: none; flex: 1; }
+.cv-card-main h2 { font: 600 var(--text-lg)/1.25 var(--font-display); }
 .cv-card-main p { margin: 4px 0 0; }
 .cv-card-actions { display: flex; gap: 4px; padding: 8px; border-top: 1px solid var(--border); }
 
 /* --------------------------------------------------------- job tracker */
 
-.board-page { max-width: 1400px; margin: 0 auto; padding: 32px 20px 64px; }
+.board-page { max-width: 1400px; margin: 0 auto; padding: 36px 20px 64px; }
 
 /* Fixed-width columns that scroll sideways rather than squeezing: a card
    narrower than its company name is worse than a scrollbar. */
 .board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(230px, 1fr); gap: 12px; align-items: start; overflow-x: auto; padding-bottom: 8px; }
 
-.board-column { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-width: 0; }
+.board-column { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-card); display: flex; flex-direction: column; min-width: 0; }
 /* The column a drag would land in, including the one it started from. */
 .board-column.target { border-color: var(--accent); background: var(--accent-soft); }
-.board-column-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.board-column-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.board-column-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--border); }
+.board-column-head h2 { font-size: var(--text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-family: var(--font-ui); }
 /* Keeps an empty column a drop target rather than a line. */
 .board-column-body { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 60px; }
 
-.job-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px 10px; }
+.job-card { background: var(--raised); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px 11px; transition: box-shadow var(--ease), border-color var(--ease); }
+.job-card:hover { box-shadow: var(--shadow-card); }
 .job-card.dragging { opacity: 0.6; }
 .job-card.editing { display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
 .job-card-head { display: flex; align-items: flex-start; gap: 2px; }
-.job-card-title { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: transparent; border: none; color: var(--text); padding: 2px 4px; border-radius: 4px; }
+.job-card-title { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: transparent; border: none; color: var(--text); padding: 2px 4px; border-radius: 6px; font-weight: 600; }
 .job-card-title:hover { background: var(--hover); }
 .job-card-notes { margin: 6px 2px 0; color: var(--muted); white-space: pre-wrap; }
 .job-card-foot { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
@@ -124,8 +287,8 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 .board-add { justify-content: flex-start; margin: 0 6px 6px; }
 .board-add-form { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
-.board-add-form input { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
-.board-add-form input:focus { outline: 2px solid var(--focus-ring); outline-offset: -1px; border-color: var(--accent); }
+.board-add-form input { font: inherit; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); color: var(--text); width: 100%; }
+.board-add-form input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 .board-add-actions { display: flex; gap: 4px; }
 
 /* -------------------------------------------------------------- editor */
@@ -134,142 +297,203 @@ button:disabled:hover { background: transparent; color: var(--muted); }
    footer that 100vh (sized to the largest possible viewport) can't see. */
 .editor { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
+/* The wash is the whole point of tinting the neutrals: a hue that only ever
+   appears in a 2px bar and one button leaves the screen grey. */
 .topbar {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, var(--accent-wash), var(--surface));
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  z-index: 2;
 }
-.cv-title { font-size: 15px; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; min-width: 200px; }
-.cv-title:hover, .cv-title:focus { border-color: var(--border); background: var(--bg); }
+.cv-title {
+  font: 600 var(--text-lg)/1.2 var(--font-ui);
+  letter-spacing: -0.01em;
+  color: var(--text);
+  border: 1px solid transparent; background: transparent;
+  padding: 5px 8px; border-radius: var(--radius-sm); min-width: 220px;
+  transition: background var(--ease), border-color var(--ease);
+}
+.cv-title:hover, .cv-title:focus { border-color: var(--border); background: var(--raised); outline: none; }
 
 /* Shown only once the outline has somewhere to hide — the drawer further
    down — rather than sitting beside the pane as a normal column. */
 .outline-toggle, .preview-toggle { display: none; }
-.outline-toggle { width: 30px; height: 28px; padding: 0; justify-content: center; font-size: 15px; }
+.outline-toggle { padding: 7px; }
 
-.editor-actions { display: flex; align-items: center; gap: 10px; margin-left: 10px; padding-left: 10px; border-left: 1px solid var(--border); }
+.editor-actions { display: flex; align-items: center; gap: 8px; margin-left: 6px; padding-left: 12px; border-left: 1px solid var(--border); }
 
 .share-control { display: flex; align-items: center; gap: 6px; }
-.share-link { font-size: 12px; color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-link { font-size: var(--text-xs); color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .share-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .share-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .share-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.share-heading h1 { font-size: 18px; margin: 0; }
+.share-heading h1 { font-size: var(--text-lg); margin: 0; }
 .share-embed { flex: 1; min-height: 0; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .share-foot { flex-shrink: 0; }
 
 /* Shared credit line at the bottom of every page. */
 .site-foot { margin: 0; text-align: center; }
 .app-foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
-.editor-foot { flex-shrink: 0; padding: 6px 14px; border-top: 1px solid var(--border); background: var(--surface); }
+.editor-foot { flex-shrink: 0; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface); font-size: var(--text-xs); }
 
-.save-state { font-size: 12px; color: var(--muted); }
-.save-error { color: var(--danger); }
+.save-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-xs); font-weight: 500;
+  color: var(--accent); background: var(--accent-soft);
+  padding: 4px 9px; border-radius: 999px;
+}
+.save-state::before { content: ''; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.save-error { color: var(--danger); background: var(--warn-bg); }
 
 /* All three columns are `minmax`, so narrowing the window shrinks each pane
    continuously — the preview included — instead of holding a fixed width
-   until it runs out of room and drops out. Below the breakpoint further down,
-   the columns can't shrink any further without unreadable text, and that is
-   the one point where the layout actually changes shape. */
+   until it runs out of room and drops out. The preview is weighted above the
+   fields: the form is a fixed-width stack with slack around it, and the page
+   is the thing being read. */
 .editor-body {
   flex: 1;
   display: grid;
-  grid-template-columns: minmax(160px, 200px) minmax(260px, 1fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr) minmax(320px, 1.25fr);
   min-height: 0;
 }
 
-.outline { border-right: 1px solid var(--border); background: var(--surface); padding: 12px 8px; overflow-y: auto; }
-.outline-head { color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 16px 0 6px 8px; font-size: 11px; }
-.outline-row { display: flex; align-items: center; gap: 2px; }
-.outline-item { width: 100%; justify-content: space-between; text-align: left; background: transparent; border: none; color: var(--text); padding: 6px 8px; border-radius: 6px; }
-.outline-item:hover { background: var(--bg); }
-.outline-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-.count { color: var(--muted); font-size: 12px; font-weight: 400; }
-/* `width: auto` so the box fits between its margins: .field's width: 100%
-   would add the 8px gutters on top of a full-width box and push the select
-   past the sidebar's right edge. Qualified with .field because that rule is
-   declared further down at the same specificity, so it would otherwise win. */
-.field.add-section { margin: 12px 8px 0; width: auto; }
+.outline { background: linear-gradient(180deg, var(--accent-wash), var(--bg) 220px); padding: 16px 10px; overflow-y: auto; }
+.outline-head { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 22px 0 8px 10px; font: 600 var(--text-xs)/1 var(--font-ui); }
+.outline-row { display: flex; align-items: center; gap: 1px; }
+.outline-item {
+  width: 100%; justify-content: space-between; text-align: left;
+  background: transparent; border: none; color: var(--strong);
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  font: 500 var(--text-base)/1.2 var(--font-ui);
+}
+.outline-item:hover { background: var(--hover); color: var(--text); }
+/* Filled rather than tinted: the selected section is the one place in the
+   editor where the accent gets to occupy an area. */
+.outline-item.active { background: var(--accent); color: var(--accent-ink); font-weight: 600; box-shadow: 0 2px 10px var(--glow); }
+.outline-item.active .count { color: inherit; opacity: 0.75; }
+.count { color: var(--muted); font-size: var(--text-xs); font-weight: 500; font-variant-numeric: tabular-nums; }
 
-.pane { overflow-y: auto; padding: 20px; min-width: 0; }
+/* `width: auto` so the box fits between its margins: .field's width: 100%
+   would add the 10px gutters on top of a full-width box and push it past the
+   sidebar's right edge. */
+/* `width: auto` so the box fits between its margins: .field's width: 100%
+   would add the sidebar's gutters on top of a full-width box and push the
+   select past its right edge. Qualified with .field because that rule is
+   declared further down at the same specificity, so it would otherwise win. */
+.field.add-section { margin: 16px 2px 0; width: auto; }
+
+.pane { overflow-y: auto; padding: 26px 24px; min-width: 0; }
 .preview-pane { border-left: 1px solid var(--border); background: var(--paper-surround); min-width: 0; display: flex; }
 .outline-scrim { display: none; }
 
 /* ------------------------------------------------------------- editing */
 
-.section-editor { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
-.section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-.section-title { flex: 1; font-size: 16px; font-weight: 600; border: 1px solid transparent; background: transparent; padding: 4px 6px; border-radius: 6px; }
-.section-title:hover, .section-title:focus { border-color: var(--border); background: var(--bg); }
-.section-title-static { flex: 1; }
+/* No border: the shadow separates it from the page and the serif heading
+   separates it from its own fields, which is what the border was doing. */
+.section-editor {
+  background: var(--surface);
+  border-top: 2px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+  padding: 20px 22px 18px;
+  margin-bottom: 18px;
+}
+.section-head { display: flex; align-items: center; gap: 6px; margin-bottom: 18px; }
+.section-title {
+  flex: 1;
+  font: 600 var(--text-xl)/1.15 var(--font-display);
+  letter-spacing: -0.015em; color: var(--text);
+  border: 1px solid transparent; background: transparent;
+  padding: 3px 7px; margin-left: -7px; border-radius: var(--radius-sm);
+  transition: background var(--ease), border-color var(--ease);
+}
+.section-title:hover, .section-title:focus { border-color: var(--border); background: var(--raised); outline: none; }
+.section-title-static { flex: 1; font: 600 var(--text-xl)/1.15 var(--font-display); letter-spacing: -0.015em; }
 .section-actions { display: flex; gap: 4px; }
-.subhead { margin: 18px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+.subhead { margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font: 600 var(--text-xs)/1 var(--font-ui); }
 
 .section-options {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg);
+  gap: 10px 20px;
+  padding: 13px 15px;
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: var(--raised);
 }
 .section-options .field { width: auto; }
-.section-options select { min-width: 190px; }
+.section-options select { min-width: 200px; }
 
-.item-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
-.item-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.item-head { display: flex; align-items: center; gap: 4px; padding: 6px 8px; }
-.item-title { flex: 1; text-align: left; background: transparent; border: none; font-weight: 500; color: var(--text); }
-.item-fields { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 12px 14px; }
+.item-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.item-card {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--ease), border-color var(--ease);
+}
+.item-card:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.item-card.open { box-shadow: var(--shadow-lift), 0 0 0 1px var(--focus-ring); border-color: transparent; }
+.item-head { display: flex; align-items: center; gap: 4px; padding: 9px 10px 9px 6px; }
+.item-title { flex: 1; text-align: left; background: transparent; border: none; color: var(--text); font: 600 var(--text-base)/1.3 var(--font-ui); padding: 2px 4px; border-radius: 6px; }
+.item-title:hover { background: var(--hover); }
+.item-fields { display: flex; flex-wrap: wrap; gap: 14px 12px; padding: 6px 16px 18px; }
 
-.item-card.hidden { background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 8px, var(--stripe) 8px, var(--stripe) 16px); border-style: dashed; }
+.item-card.hidden { background: repeating-linear-gradient(135deg, var(--surface), var(--surface) 8px, var(--stripe) 8px, var(--stripe) 16px); border-style: dashed; box-shadow: none; }
 .item-card.hidden .item-title { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
-.pill { margin-left: 8px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; text-decoration: none; display: inline-block; }
+.pill { margin-left: 8px; font: 600 10px/1.6 var(--font-ui); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--raised); border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; text-decoration: none; display: inline-block; }
 
 .sortable.dragging { opacity: 0.6; }
-.drag-handle { color: var(--muted); background: transparent; border: none; cursor: grab; padding: 4px 6px; line-height: 1; }
+/* Out of the way until the row is touched: six dots on every row is visual
+   noise on a list that is mostly read, not reordered. */
+.drag-handle { color: var(--muted); background: transparent; border: none; cursor: grab; padding: 5px 3px; display: flex; opacity: 0; transition: opacity var(--ease); }
+.outline-row:hover .drag-handle,
+.item-head:hover .drag-handle,
+.job-card:hover .drag-handle,
+.drag-handle:focus-visible { opacity: 1; }
 .drag-handle:active { cursor: grabbing; }
 
 .full { flex: 1 1 100%; min-width: 0; }
-.half { flex: 1 1 calc(50% - 5px); min-width: 180px; }
+.half { flex: 1 1 calc(50% - 6px); min-width: 190px; }
 
-.field { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-.field-label { font-size: 12px; color: var(--muted); }
+.field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.field-label { font: 500 12px/1 var(--font-ui); color: var(--muted); }
 .field input[type="text"], .field input[type="url"], .field input[type="email"],
 .field input[type="tel"], .field input[type="number"], .field select, .field textarea {
-  font: inherit; padding: 7px 9px; border: 1px solid var(--border);
-  border-radius: 6px; background: var(--surface); color: var(--text); width: 100%;
+  font: var(--text-base)/1.4 var(--font-ui); padding: 9px 11px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--raised); color: var(--text); width: 100%;
+  transition: border-color var(--ease), box-shadow var(--ease), background var(--ease);
 }
 .field textarea { resize: vertical; }
-.field input:focus, .field select:focus, .field textarea:focus { outline: 2px solid var(--focus-ring); outline-offset: -1px; border-color: var(--accent); }
-.field-checkbox { flex-direction: row; align-items: center; gap: 8px; }
-.field-checkbox input { width: auto; }
-.field-date { display: flex; gap: 6px; }
-.field-date select { flex: 1 1 60%; }
-.field-date input { flex: 1 1 40%; }
-.field input[type="color"] { padding: 2px; height: 34px; }
-.field input[type="range"] { width: 100%; }
+.field input:hover, .field select:hover, .field textarea:hover { border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); }
+.field input:focus, .field select:focus, .field textarea:focus { outline: none; background: var(--surface); border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
+.field-checkbox { flex-direction: row; align-items: center; gap: 9px; }
+.field-checkbox input { width: auto; accent-color: var(--accent); }
+.field-date { display: flex; gap: 8px; }
+.field-date select { flex: 1 1 58%; }
+.field-date input { flex: 1 1 42%; }
+.field input[type="color"] { padding: 2px; height: 36px; cursor: pointer; }
+.field input[type="range"] { width: 100%; accent-color: var(--accent); }
 
 /* ---------------------------------------------------------- rich text */
 
-.rt-editor { position: relative; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
-.rt-editor:focus-within { outline: 2px solid var(--focus-ring); outline-offset: -1px; border-color: var(--accent); }
+.rt-editor { position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); transition: border-color var(--ease), box-shadow var(--ease); }
+.rt-editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus-ring); }
 
-.rt-toolbar { display: flex; gap: 2px; padding: 4px 5px; border-bottom: 1px solid var(--border); }
+.rt-toolbar { display: flex; gap: 2px; padding: 5px 6px; border-bottom: 1px solid var(--border); }
 .rt-button {
-  width: 26px; height: 24px; padding: 0; justify-content: center;
-  border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px;
+  width: 28px; height: 26px; padding: 0; justify-content: center;
+  border-radius: 6px; background: transparent; color: var(--muted); font-size: var(--text-sm);
 }
-.rt-button:hover { background: var(--bg); color: var(--text); }
+.rt-button:hover { background: var(--hover); color: var(--text); }
 .rt-button.active { background: var(--accent-soft); color: var(--accent); }
 .rt-button:nth-child(1) { font-weight: 700; }
-.rt-button:nth-child(2) { font-style: italic; font-family: Georgia, serif; }
+.rt-button:nth-child(2) { font-style: italic; font-family: var(--font-display); }
 .rt-button:nth-child(3) { text-decoration: underline; }
 
-.rt-content { padding: 8px 10px; min-height: 42px; outline: none; font: inherit; }
+.rt-content { padding: 11px 13px; min-height: 42px; outline: none; font: inherit; background: var(--surface); border-radius: 0 0 7px 7px; }
 .rt-content p { margin: 0; }
 .rt-content p + p { margin-top: 0.4em; }
 .rt-content ul { margin: 0; padding-left: 1.1em; }
@@ -284,8 +508,8 @@ button:disabled:hover { background: transparent; color: var(--muted); }
    moment anything is typed. */
 .rt-placeholder {
   position: absolute;
-  top: 41px;
-  left: 11px;
+  top: 44px;
+  left: 14px;
   color: var(--muted);
   pointer-events: none;
 }
@@ -297,8 +521,8 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 /* ------------------------------------------------------------- preview */
 
 .preview { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
-.preview-status { position: absolute; top: 10px; right: 14px; z-index: 1; display: flex; gap: 6px; }
-.badge { background: rgba(0, 0, 0, 0.62); color: #fff; padding: 3px 8px; border-radius: 999px; font-size: 11px; }
+.preview-status { position: absolute; top: 12px; right: 16px; z-index: 1; display: flex; gap: 6px; }
+.badge { background: rgba(0, 0, 0, 0.62); color: #fff; padding: 4px 9px; border-radius: 999px; font-size: var(--text-xs); font-weight: 500; }
 .badge-error { background: var(--danger); }
 .badge-notice { background: var(--notice); }
 .preview-frame { flex: 1; width: 100%; border: none; background: var(--paper-surround); }
@@ -307,20 +531,16 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 /* Sits above the iframe, which cannot be clicked through. */
 .preview-expand {
   position: absolute;
-  top: 10px;
-  left: 14px;
+  top: 12px;
+  left: 16px;
   z-index: 2;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 6px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.62);
   color: #fff;
-  font-size: 14px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--ease), background var(--ease);
 }
 .preview:hover .preview-expand,
 .preview-expand:focus-visible { opacity: 1; }
@@ -356,34 +576,86 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   top: 16px;
   right: 20px;
   z-index: 101;
-  width: 36px;
-  height: 36px;
-  padding: 0;
-  justify-content: center;
-  border-radius: 8px;
+  padding: 9px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
-  font-size: 16px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
 }
-.lightbox-close:hover { background: var(--bg); }
+.lightbox-close:hover { background: var(--raised); }
 
 @media (max-width: 700px) {
   .lightbox { padding: 12px 8px; }
   .lightbox-close { top: 8px; right: 10px; }
 }
 
-.diagnostics { margin: 0; padding: 10px 16px; background: var(--warn-bg); color: var(--warn-text); list-style: none; font-size: 12px; border-bottom: 1px solid var(--warn-border); max-height: 30%; overflow-y: auto; }
+.diagnostics { margin: 0; padding: 10px 16px; background: var(--warn-bg); color: var(--warn-text); list-style: none; font-size: var(--text-sm); border-bottom: 1px solid var(--warn-border); max-height: 30%; overflow-y: auto; }
 .diagnostics code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-/* The three columns' own minimums (200 + 260 + 280) sum to 740: below that
+/* --------------------------------------------------------- appearance */
+
+.appearance { position: relative; display: inline-flex; }
+
+/* Anchored to its button rather than centred on the screen: it adjusts one
+   thing and you watch the page change behind it, so a scrim would hide the
+   only feedback it has. */
+.appearance-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 50;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+}
+.appearance-group { display: flex; flex-direction: column; gap: 7px; }
+.appearance-group > span { font: 600 var(--text-xs)/1 var(--font-ui); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+
+/* Three equal thirds, so the control reads as one object with a position. */
+.appearance-scheme { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 3px; background: var(--raised); border-radius: 10px; }
+.appearance-scheme button { justify-content: center; padding: 6px 4px; border-radius: 7px; color: var(--muted); }
+.appearance-scheme button:hover { background: var(--hover); color: var(--text); }
+.appearance-scheme button[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); }
+
+.palette-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.palette-swatch {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--raised);
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.palette-swatch:hover { border-color: var(--accent); color: var(--text); background: var(--raised); }
+.palette-swatch[aria-pressed='true'] { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 2px var(--focus-ring); }
+/* Three stripes: page, surface, accent. Enough of a palette to recognise it
+   without rendering the whole app into a 60px box. */
+.palette-bars { display: flex; height: 18px; border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+.palette-bars i { flex: 1; }
+.palette-bars i:last-child { flex: 0 0 34%; }
+
+.accent-row { display: flex; align-items: center; gap: 8px; }
+.accent-row input[type="color"] { width: 42px; height: 32px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--raised); cursor: pointer; }
+.accent-row .ghost { flex: 1; justify-content: center; }
+
+/* The three columns' own minimums (220 + 280 + 320) sum to 820: below that
    plus the outline's border and the pane's padding, something has to give.
    Rather than pick one pane to squeeze past readability, the layout stacks
    instead: fields on top, the rendered CV below them (not hidden — scrolling
    past the fields is what "smaller screen" already means here), and the
    outline becomes a drawer since a section list doesn't need to sit beside
    the thing it navigates. */
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .editor-body {
     display: flex;
     flex-direction: column;
@@ -409,6 +681,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
     inset: 0 25% 0 0;
     z-index: 20;
     max-width: 280px;
+    background: var(--surface);
     transform: translateX(-100%);
     transition: transform 0.15s ease;
     box-shadow: 2px 0 16px rgba(0, 0, 0, 0.3);
@@ -431,6 +704,8 @@ button:disabled:hover { background: transparent; color: var(--muted); }
      row and pushes the rest of the row's controls onto the next. */
   .cv-title { min-width: 0; flex: 1 1 100%; }
   .topbar .spacer { flex-basis: 100%; height: 0; }
+  /* Anchored right would hang off the screen once the button has wrapped. */
+  .appearance-panel { position: fixed; top: auto; right: 10px; left: 10px; width: auto; }
 }
 
 /* --------------------------------------------------------------- accounts */
@@ -443,17 +718,18 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
 }
 
-.auth-card h2 { font-size: 15px; margin: 0 0 4px; }
+.auth-card h2 { font: 600 var(--text-lg)/1.2 var(--font-display); margin: 0 0 4px; }
 .auth-card .primary { justify-content: center; margin-top: 4px; }
-.auth-switch { justify-content: center; font-size: 12px; }
+.auth-switch { justify-content: center; font-size: var(--text-sm); }
 
 .auth-error {
   margin: 0;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 12px;
+  padding: 9px 11px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
   background: var(--warn-bg);
   border: 1px solid var(--warn-border);
   color: var(--warn-text);
@@ -482,9 +758,10 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
 }
 
-.dialog-card h2 { font-size: 15px; margin: 0 0 4px; }
+.dialog-card h2 { font: 600 var(--text-lg)/1.2 var(--font-display); margin: 0 0 4px; }
 .dialog-card p { margin: 0; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 /* Long addresses truncate rather than pushing the buttons off the header. */
@@ -494,7 +771,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 
 /* Slightly larger than the app: this is the one screen that is read rather
    than operated, and 14px prose in a wide column is hard work. */
-.landing { font-size: 15px; line-height: 1.6; }
+.landing { font-size: var(--text-lg); line-height: 1.6; }
 .landing > * { max-width: 1040px; margin: 0 auto; padding-inline: 24px; }
 
 .landing-bar {
@@ -504,12 +781,13 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   padding-block: 20px;
 }
 
-.wordmark { font-weight: 600; letter-spacing: -0.01em; }
+.wordmark { font: 600 var(--text-xl)/1 var(--font-display); letter-spacing: -0.02em; }
 
 .landing h1 {
   /* Scales with the viewport instead of breaking at one arbitrary width. */
-  font-size: clamp(30px, 4.6vw, 46px);
-  line-height: 1.12;
+  font-family: var(--font-display);
+  font-size: clamp(32px, 4.8vw, 50px);
+  line-height: 1.1;
   letter-spacing: -0.025em;
   font-weight: 600;
   margin: 0 0 16px;
@@ -520,7 +798,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 /* Measure, not width: prose past ~70 characters a line is tiring to read. */
 .landing .lede { color: var(--muted); max-width: 58ch; margin: 0 0 16px; }
 
-.landing-facts { color: var(--muted); font-size: 13px; margin: 0; }
+.landing-facts { color: var(--muted); font-size: var(--text-sm); margin: 0; }
 .landing-facts span { padding-inline: 6px; }
 
 .landing-hero {
@@ -532,7 +810,7 @@ button:disabled:hover { background: transparent; color: var(--muted); }
 }
 
 .landing-section { padding-block: 40px; border-top: 1px solid var(--border); }
-.landing-section h2 { font-size: 20px; letter-spacing: -0.015em; margin: 0 0 10px; }
+.landing-section h2 { font: 600 var(--text-xl)/1.2 var(--font-display); letter-spacing: -0.02em; margin: 0 0 10px; }
 
 .landing-templates {
   display: grid;
@@ -551,11 +829,11 @@ button:disabled:hover { background: transparent; color: var(--muted); }
   border-top: 1px solid var(--border);
 }
 
-.landing-templates dt { font-weight: 600; }
+.landing-templates dt { font-weight: 600; color: var(--strong); }
 .landing-templates dd { margin: 0; color: var(--muted); }
 
 .landing-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
-.landing-notes h3 { font-size: 15px; margin: 0 0 8px; }
+.landing-notes h3 { font-size: var(--text-lg); font-weight: 600; margin: 0 0 8px; }
 .landing-notes p { margin: 0; color: var(--muted); }
 
 .landing-foot { padding-block: 32px 48px; border-top: 1px solid var(--border); }
@@ -580,4 +858,10 @@ button:disabled:hover { background: transparent; color: var(--muted); }
    row, but looks orphaned once dashboard-head wraps it onto its own line. */
 @media (max-width: 640px) {
   .dashboard-actions { margin-left: 0; padding-left: 0; border-left: none; }
+}
+
+/* Motion is decoration here — every transition above is a hover or a focus
+   ring, and none of it carries meaning. */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

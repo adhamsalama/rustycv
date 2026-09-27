@@ -5,6 +5,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { STATUS_COLUMNS } from '../types'
 import type { Application, ApplicationInput, CvSummary } from '../types'
 import { TextArea, TextField } from './Fields'
+import { GripIcon } from './Icon'
 
 function toInput(application: Application): ApplicationInput {
   const { company, role, url, notes, status, cvId } = application
@@ -128,7 +129,7 @@ export function JobCard({
           {...attributes}
           {...listeners}
         >
-          ⠿
+          <GripIcon />
         </button>
         <button type="button" className="job-card-title" onClick={() => setDraft(toInput(application))}>
           <strong>{application.company || 'Untitled'}</strong>

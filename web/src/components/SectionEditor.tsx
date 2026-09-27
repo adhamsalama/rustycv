@@ -7,6 +7,7 @@ import { sectionItems, visibleItems } from '../types'
 import { CheckboxField, DateField, TagsField, TextArea, TextField } from './Fields'
 import { RichTextField } from './RichText'
 import { SortableList, SortableRow } from './Sortable'
+import { GripIcon, Icon } from './Icon'
 
 const asString = (value: unknown): string => (typeof value === 'string' ? value : '')
 const asStrings = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : [])
@@ -146,7 +147,7 @@ function ItemCard({
               aria-label={`Reorder ${spec.itemLabel} ${index + 1}`}
               {...handleProps}
             >
-              ⠿
+              <GripIcon />
             </button>
             <button type="button" className="item-title" onClick={onToggle}>
               {spec.summary(item)}
@@ -154,19 +155,22 @@ function ItemCard({
             </button>
             <button
               type="button"
-              className="ghost"
+              className="ghost icon-btn"
               aria-pressed={hidden}
+              aria-label={hidden ? 'Show this entry' : 'Hide this entry'}
               title={hidden ? 'Include this entry in the PDF' : 'Keep this entry but leave it out of the PDF'}
               onClick={() => toggleItem(section.id, item.id)}
             >
-              {hidden ? 'Show' : 'Hide'}
+              <Icon name={hidden ? 'eye-off' : 'eye'} />
             </button>
             <button
               type="button"
-              className="ghost danger"
+              className="ghost icon-btn danger"
+              aria-label={`Remove this ${spec.itemLabel}`}
+              title={`Remove this ${spec.itemLabel}`}
               onClick={() => removeItem(section.id, item.id)}
             >
-              Remove
+              <Icon name="trash" />
             </button>
           </div>
 
@@ -212,11 +216,27 @@ export function SectionEditor({ section }: { section: Section }) {
           aria-label="Section title"
         />
         <div className="section-actions">
-          <button type="button" className="ghost" onClick={() => toggleSection(section.id)}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => toggleSection(section.id)}
+            title={
+              section.visible
+                ? 'Keep this section but leave it out of the PDF'
+                : 'Include this section in the PDF'
+            }
+          >
+            <Icon name={section.visible ? 'eye' : 'eye-off'} />
             {section.visible ? 'Hide' : 'Show'}
           </button>
-          <button type="button" className="ghost danger" onClick={() => removeSection(section.id)}>
-            Delete section
+          <button
+            type="button"
+            className="ghost icon-btn danger"
+            aria-label="Delete section"
+            title="Delete this section and everything in it"
+            onClick={() => removeSection(section.id)}
+          >
+            <Icon name="trash" />
           </button>
         </div>
       </header>

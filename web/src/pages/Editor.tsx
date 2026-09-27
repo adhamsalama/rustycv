@@ -16,6 +16,7 @@ import { DownloadPdf } from '../components/DownloadPdf'
 import { ShareControl } from '../components/ShareControl'
 import { SiteFooter } from '../components/SiteFooter'
 import { SortableList, SortableRow } from '../components/Sortable'
+import { GripIcon, Icon } from '../components/Icon'
 
 type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
 
@@ -121,7 +122,7 @@ export function Editor() {
           aria-expanded={outlineOpen}
           onClick={() => setOutlineOpen((o) => !o)}
         >
-          ☰
+          <Icon name="menu" />
         </button>
         <Link to="/" className="ghost">
           ← All CVs
@@ -138,7 +139,7 @@ export function Editor() {
         <div className="spacer" />
         {/* The stacked preview is already on the page below the fields, but a
             small screen means scrolling past all of them to reach it — this
-            jumps straight to the same overlay the ⤢ icon on the preview
+            jumps straight to the same overlay the expand icon on the preview
             itself opens. */}
         <button
           type="button"
@@ -193,7 +194,7 @@ export function Editor() {
                         aria-label={`Reorder ${section.title}`}
                         {...handleProps}
                       >
-                        ⠿
+                        <GripIcon />
                       </button>
                       <button
                         type="button"

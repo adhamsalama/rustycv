@@ -255,16 +255,61 @@ download and a cold compile.
 The UI's light/dark is separate from the CV's own theme and never reaches the
 render path — a CV is a printed page and its PDF is white either way.
 
-**Every editor colour is a `light-dark()` token in `:root`.** A literal colour
-anywhere else in `styles.css` is a colour that only works in one scheme, which
-is invisible until someone switches over — `names no scheme-specific colour
-outside the tokens` in `theme.test.ts` fails on one, and its allowlist is the
-place to justify a genuine exception (the CV's paper, overlay scrims).
+Colour is **two layers**. A *palette* sets eleven base tokens and nothing else;
+`:root` carries the default (Everforest) and each `[data-palette='…']` block
+replaces the same eleven. Everything else — `--accent-soft`, `--hover`,
+`--focus-ring`, `--warn-bg`, the shadows — is `color-mix`'d from those in a
+shared block, so a new palette has nowhere to forget a hover state. Every base
+token is a `light-dark()` pair: a palette is chosen independently of light/dark
+and has to work in both.
+
+**The palette blocks are not anchored to `:root`.** A bare
+`[data-palette='gruvbox']` selector means any element wearing the attribute
+resolves that palette's tokens, which is how the picker's swatches paint
+themselves in a palette that is not the one currently on — without a second,
+hand-maintained copy of the colours in TSX. Note that `--accent` is *derived*
+and therefore inherited from the root, so a swatch reads `--accent-base`.
+
+Three preferences, three keys, three apply functions (`theme.ts`): appearance
+(`system` writes no attribute), palette (the default writes no attribute), and
+a custom accent. The accent is stored as the **derived** `light-dark()` pair
+rather than the raw hex, so the inline script in `index.html` only applies it —
+`deriveAccent` is the only place the arithmetic lives. That script has to stay
+in step with all three apply functions.
+
+A single picked colour cannot serve both schemes, so `deriveAccent` walks it
+towards black until it reads on a pale page and towards white until it reads on
+a deep one. The bounds (≤0.36 and ≥0.45 relative luminance) are read off the
+built-in palettes rather than invented, and they straddle the ink threshold
+from both sides, which is why the ink pair is always white-on-light and
+dark-on-dark. Nothing comes back unchanged from both halves; that is the point,
+not a bug.
+
+**A literal colour outside the token block is a colour that only works in one
+scheme**, and `names no scheme-specific colour outside the tokens` in
+`theme.test.ts` fails on one. Its allowlist is where a genuine exception is
+justified (the CV's paper, overlay scrims). Two siblings guard the rest: `each
+define every base token` catches a half-written palette — which does not fail
+loudly, it silently inherits one Everforest border into a Gruvbox editor — and
+`are the same set the picker offers` catches a palette that exists in one place
+and not the other.
+
+**That audit was vacuous for its whole life until 2026-09-27.** `import CSS
+from './styles.css?raw'` returns an *empty string* under vitest unless `css` is
+on, and an empty string breaks nothing downstream: `''.indexOf(x)` is -1,
+`slice(-1)` is one character, and one character contains no colours. `test: {
+css: true }` in `vite.config.ts` is the fix and `has a stylesheet to audit at
+all` is the guard. Anything that asserts on a file's *contents* wants a
+non-empty check next to it.
 
 `system` is the default and sets no attribute at all, so plain CSS follows the
-OS; the toggle only writes `data-appearance` for an explicit choice. The inline
-script in `web/index.html` applies the stored one before first paint and has to
-stay in step with `applyAppearance`.
+OS; the toggle only writes `data-appearance` for an explicit choice.
+
+The UI's own icons are `components/Icon.tsx` — one stroked 24-unit grid, drawn
+in `currentColor`. They are not `assets/icons`, which are Font Awesome glyphs
+compiled into the renderer and drawn inside a CV. Don't reach for a Unicode
+glyph: `☰ ⠿ ⤢ ✕` render as whatever the platform has for that code point and
+read as fallback characters rather than controls, which is what they replaced.
 
 ## Wire format
 

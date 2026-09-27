@@ -4,18 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RustyCV</title>
-    <!-- Apply the saved appearance before the first paint. The app would set
-         the same attribute on mount, but the module script is deferred, so a
-         dark-mode user would see a white flash first. Keep in step with
-         `applyAppearance` in src/theme.ts. -->
+    <!-- Apply the saved appearance, palette and accent before the first
+         paint. The app sets the same three on mount, but the module script is
+         deferred, so without this a dark-mode user sees a white flash and
+         anyone with a palette sees the default one first.
+
+         It only *applies*; it works nothing out. `deriveAccent` in
+         src/theme.ts has the arithmetic and stores what it produced, so this
+         stays four lines that cannot drift from it. Keep in step with
+         `applyAppearance`, `applyPalette` and `applyAccent`. -->
     <script>
       try {
-        var saved = localStorage.getItem('rustycv:appearance')
-        if (saved === 'light' || saved === 'dark') {
-          document.documentElement.dataset.appearance = saved
+        var root = document.documentElement
+
+        var appearance = localStorage.getItem('rustycv:appearance')
+        if (appearance === 'light' || appearance === 'dark') {
+          root.dataset.appearance = appearance
+        }
+
+        // The default palette is the one :root already carries and is stored
+        // as nothing, so there is no name to check against here — an
+        // unrecognised one simply matches no rule and leaves the default on.
+        var palette = localStorage.getItem('rustycv:palette')
+        if (palette && /^[a-z]+$/.test(palette)) root.dataset.palette = palette
+
+        var accent = JSON.parse(localStorage.getItem('rustycv:accent') || 'null')
+        if (accent && accent.accent && accent.ink) {
+          root.style.setProperty('--accent-user', accent.accent)
+          root.style.setProperty('--accent-ink-user', accent.ink)
         }
       } catch (e) {
-        /* storage disabled — fall back to following the system */
+        /* storage disabled — the stylesheet's own defaults are all fine */
       }
     </script>
   </head>
