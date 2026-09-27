@@ -262,28 +262,52 @@ rather than handing the bytes to an `<iframe>`.
 does Safari, so an iframe gave a Firefox user a search box, a page spinner, a
 zoom menu and five annotation tools wrapped around a document that is thrown
 away on the next keystroke. That is the whole reason for the change; the three
-things it buys are consequences. The page count is one (`/api` never knew it —
-only the renderer did). A scroll position that survives an edit is the second:
-the pages are swapped in a single `replaceChildren`, so the container never
-collapses, where changing an iframe's `src` sent every edit back to the top.
-A shadow under the paper is the third.
+things it buys are consequences. The page count is one. A scroll position that
+survives an edit is the second: the pages are swapped in a single
+`replaceChildren`, so the container never collapses, where changing an
+iframe's `src` sent every edit back to the top. A shadow under the paper is
+the third.
 
-**It falls back to the iframe**, toolbar and all, if pdf.js will not load or
-the bytes will not open — the same direction as the wasm renderer's fallback,
-and for the same reason: a preview with someone else's furniture round it
-beats no preview.
+**The rasterising happens in `pdfWorker.ts`, not here.** pdf.js splits its work
+in two — the parser runs in a worker of its own, but painting the operator
+list onto a canvas happens wherever the *document proxy* lives. Hold that proxy
+on the main thread and every re-render rasterises an A4 page on the thread
+answering the keyboard, which an iframe's viewer (in Chrome, another process
+entirely) was not doing. So the proxy lives in a worker, paints onto
+`OffscreenCanvas`, and sends back an `ImageBitmap` per page; a canvas with a
+`bitmaprenderer` context *adopts* one rather than drawing it.
 
-pdf.js and its worker are **lazy-imported** so only the editor pays for them;
-the dashboard and the landing page never load either. `@napi-rs/canvas` is in
-`ignoredOptionalDependencies` — pdfjs-dist wants it to rasterise in *Node*,
-which nothing here does, and left alone it puts a native binary in
-`node_modules` and the whole platform matrix in the lockfile.
+Three things that worker has to get right, each of which is a `document`
+reference away from breaking:
+
+- pdf.js makes canvases of its own for soft masks, patterns and transparency
+  groups, and its default factory reaches for `document`. It gets an
+  `OffscreenCanvas` one, duck-typed because `BaseCanvasFactory` is not public.
+- `disableFontFace: true`, because there is no DOM to install an `@font-face`
+  into — glyphs are drawn from the embedded font programs instead. Typst
+  embeds every font it uses, so nothing is lost.
+- pdf.js reads `window.location` when it spawns its parser, so the parser is
+  constructed here with an explicit `port` and handed over. One per worker:
+  `getDocument` makes a fresh `PDFWorker` when it is not given one and
+  `task.destroy()` terminates it, which would mean spawning and killing a
+  worker over a 1.2MB script on every pause in typing.
+
+**There is no middle tier that paints on the main thread**, and that is
+deliberate: a worker is its own module graph, so a fallback copy of pdf.js is
+a *second* 131kB gzipped in the bundle for a path nothing reaches — every
+browser new enough for the `light-dark()` this stylesheet is built on (Safari
+17.5) has had `OffscreenCanvas` since 16.4. A worker that fails goes straight
+to the iframe, toolbar and all, and stops being retried.
 
 **The worker is a `.mjs`.** The Dockerfile's precompression step matches
 extensions by name, so that one had to be added to the list; at 1.2MB it is
 the largest thing the editor loads after the wasm module, and an extension
 missing from that `find` is a file served raw with no symptom but a slow first
 preview.
+
+`@napi-rs/canvas` is in `ignoredOptionalDependencies` — pdfjs-dist wants it to
+rasterise in *Node*, which nothing here does, and left alone it puts a native
+binary in `node_modules` and the whole platform matrix in the lockfile.
 
 The *share* page still uses `<embed>` and the browser's own viewer on purpose.
 A visitor holding a link wants print and download, and should not fetch pdf.js

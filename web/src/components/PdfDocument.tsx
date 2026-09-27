@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RasterMessage, RasterRequest } from '../pdfWorker'
 
 /**
  * The rendered CV, drawn page by page onto canvases.
  *
  * **This is not a second render path.** The bytes are the ones `render_pdf`
  * produced and the ones the download hands over; pdf.js only rasterises them
- * for the screen, the way the browser's own viewer was doing before. What
- * changes is who draws the chrome around them.
+ * for the screen, the way the browser's viewer was doing before. What changes
+ * is who draws the chrome around them.
  *
  * An `<iframe>` gets the *browser's* PDF viewer, and `#toolbar=0` is a
  * Chromium parameter — Firefox's pdf.js ignores it, so a Firefox user was
@@ -17,41 +18,111 @@ import { useEffect, useRef, useState } from 'react'
  * count, a scroll position that survives a re-render, and a page that can have
  * a shadow under it.
  *
- * If any of that fails the iframe comes back, toolbar and all — a preview with
- * someone else's furniture around it beats no preview.
+ * Two tiers:
+ *
+ * 1. **`pdfWorker.ts`** — pdf.js paints onto `OffscreenCanvas` off the main
+ *    thread and sends back an `ImageBitmap` per page. Handing one to a
+ *    `bitmaprenderer` context is a transfer, not a draw, so the editor's own
+ *    thread does no rasterising at all.
+ * 2. **The iframe**, toolbar and all. A preview with someone else's furniture
+ *    round it beats no preview.
+ *
+ * There is deliberately no middle tier that paints here instead. It would be
+ * a second copy of pdf.js in the bundle — a worker is its own module graph, so
+ * nothing is shared — 131kB gzipped for a path nothing reaches: every browser
+ * new enough for the `light-dark()` this stylesheet is built on (Safari 17.5)
+ * has had `OffscreenCanvas` since 16.4. And painting an A4 page on the thread
+ * that answers the keyboard is the thing this file exists to stop.
  */
 
-/**
- * pdf.js, and **one** worker to run every document through.
- *
- * Resolved once per page load: the library and its worker are 1.7MB between
- * them (0.4MB over the wire) and only the editor's preview ever wants them, so
- * both are imported lazily and split into their own chunks.
- *
- * The worker is shared on purpose. `getDocument` creates a fresh `PDFWorker`
- * when it is not handed one and `task.destroy()` terminates it again — which
- * across a typing session means spawning and killing a worker over a 1.2MB
- * script on every settle, for no reason: the document changes on each edit,
- * the thing parsing it need not. Passing our own also leaves `task._worker`
- * null, so `destroy()` tears down the document and leaves the worker standing.
- */
-let pdfjs: Promise<{
-  lib: typeof import('pdfjs-dist')
-  worker: import('pdfjs-dist').PDFWorker
-}> | null = null
+// -------------------------------------------------------- tier 1: a worker
 
-function loadPdfjs() {
-  pdfjs ??= (async () => {
-    const [lib, workerUrl] = await Promise.all([
-      import('pdfjs-dist'),
-      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-    ])
-    lib.GlobalWorkerOptions.workerSrc = workerUrl.default
-    // No arguments: pdf.js's generated types mistype `name` as
-    // `null | undefined`, and the default worker is what we want anyway.
-    return { lib, worker: new lib.PDFWorker() }
-  })()
-  return pdfjs
+let rasteriser: Worker | null = null
+/** Set once a worker has failed: one bad worker costs the preview once. */
+let rasteriserBroken = false
+let nextRequest = 1
+
+const waiting = new Map<number, { resolve: (pages: ImageBitmap[]) => void; reject: (error: Error) => void }>()
+
+function rasteriserWorker(): Worker {
+  if (rasteriser) return rasteriser
+
+  const worker = new Worker(new URL('../pdfWorker.ts', import.meta.url), { type: 'module' })
+
+  worker.onmessage = (event: MessageEvent<RasterMessage>) => {
+    const message = event.data
+    const pending = waiting.get(message.id)
+    if (!pending) {
+      // Nobody is listening any more — an edit landed while this was in
+      // flight. Close the bitmaps rather than leaving several megabytes of
+      // page to the garbage collector's discretion.
+      if (message.kind === 'rastered') for (const page of message.pages) page.close()
+      return
+    }
+    waiting.delete(message.id)
+    if (message.kind === 'rastered') pending.resolve(message.pages)
+    else pending.reject(new Error(message.message))
+  }
+
+  // A worker that died takes every request with it, including ones that will
+  // never now be answered.
+  worker.onerror = () => {
+    rasteriserBroken = true
+    for (const pending of waiting.values()) pending.reject(new Error('The PDF worker stopped'))
+    waiting.clear()
+  }
+
+  rasteriser = worker
+  return worker
+}
+
+function rasteriseOffThread(
+  bytes: ArrayBuffer,
+  width: number,
+  density: number,
+): Promise<ImageBitmap[]> {
+  const worker = rasteriserWorker()
+  const id = nextRequest++
+  return new Promise<ImageBitmap[]>((resolve, reject) => {
+    waiting.set(id, { resolve, reject })
+    worker.postMessage({ id, bytes, width, density } satisfies RasterRequest, [bytes])
+  })
+}
+
+/** A canvas that *holds* a bitmap. `transferFromImageBitmap` sizes it too. */
+function adopt(bitmap: ImageBitmap): HTMLCanvasElement {
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('bitmaprenderer')
+  if (!context) {
+    bitmap.close()
+    throw new Error('This browser has no bitmaprenderer context')
+  }
+  context.transferFromImageBitmap(bitmap)
+  return canvas
+}
+
+// ------------------------------------------------------------- the component
+
+async function rasterise(
+  blob: Blob,
+  width: number,
+  density: number,
+): Promise<HTMLCanvasElement[]> {
+  if (rasteriserBroken || typeof OffscreenCanvas === 'undefined') {
+    throw new Error('No off-thread rasteriser')
+  }
+  try {
+    // A fresh ArrayBuffer: it is transferred to the worker, which detaches it
+    // for everybody else — including the second copy of this component that
+    // expanding the preview mounts.
+    const bitmaps = await rasteriseOffThread(await blob.arrayBuffer(), width, density)
+    return bitmaps.map(adopt)
+  } catch (error) {
+    // Do not keep paying for a worker that has already proved it cannot do
+    // this; the next render goes straight to the iframe.
+    rasteriserBroken = true
+    throw error
+  }
 }
 
 export function PdfDocument({
@@ -61,7 +132,7 @@ export function PdfDocument({
   label,
 }: {
   blob: Blob
-  /** The same bytes as an object URL, for the fallback below. */
+  /** The same bytes as an object URL, for the iframe fallback. */
   url: string
   onPages?: (pages: number) => void
   label: string
@@ -81,7 +152,7 @@ export function PdfDocument({
 
     const observer = new ResizeObserver((entries) => {
       const measured = Math.round(entries[0]?.contentRect.width ?? 0)
-      // A canvas is re-rasterised on every width change, so ignore the
+      // Every page is re-rasterised on a width change, so ignore the
       // sub-pixel noise a scrollbar appearing and disappearing produces.
       setWidth((current) => (Math.abs(current - measured) > 8 ? measured : current))
     })
@@ -93,46 +164,21 @@ export function PdfDocument({
     if (width === 0 || failed) return
 
     let cancelled = false
-    // The loading task, not the document: `destroy` lives on the task in
-    // pdf.js 6 and is what shuts the worker down.
-    let task: import('pdfjs-dist').PDFDocumentLoadingTask | null = null
 
     void (async () => {
       try {
-        const { lib, worker } = await loadPdfjs()
-        // A fresh ArrayBuffer per call: pdf.js may transfer the one it is
-        // given to its worker, which detaches it for everybody else —
-        // including the second copy of this component that expanding mounts.
-        task = lib.getDocument({ data: await blob.arrayBuffer(), worker })
-        const document_ = await task.promise
-        if (cancelled) return
-        report.current?.(document_.numPages)
-
         // Cap the ratio: a 3x display would quadruple the pixels for a
         // difference nobody can see on a page this size.
         const density = Math.min(window.devicePixelRatio || 1, 2)
-        const pages: HTMLCanvasElement[] = []
+        const pages = await rasterise(blob, width, density)
+        if (cancelled) return
 
-        for (let number = 1; number <= document_.numPages; number += 1) {
-          const page = await document_.getPage(number)
-          if (cancelled) return
-          const unscaled = page.getViewport({ scale: 1 })
-          const viewport = page.getViewport({ scale: (width / unscaled.width) * density })
-
-          const canvas = window.document.createElement('canvas')
+        report.current?.(pages.length)
+        pages.forEach((canvas, index) => {
           canvas.className = 'pdf-page'
-          canvas.width = Math.floor(viewport.width)
-          canvas.height = Math.floor(viewport.height)
           canvas.setAttribute('role', 'img')
-          canvas.setAttribute(
-            'aria-label',
-            `${label}, page ${number} of ${document_.numPages}`,
-          )
-
-          await page.render({ canvas, viewport }).promise
-          if (cancelled) return
-          pages.push(canvas)
-        }
+          canvas.setAttribute('aria-label', `${label}, page ${index + 1} of ${pages.length}`)
+        })
 
         // Swapped in one call, so the scroll position survives: the old pages
         // are never off the document long enough for the container to collapse
@@ -149,12 +195,10 @@ export function PdfDocument({
 
     return () => {
       cancelled = true
-      void task?.destroy()
     }
   }, [blob, width, failed, label])
 
-  // The browser's viewer, complete with whatever toolbar it insists on. Worth
-  // having: it is the difference between an ugly preview and none.
+  // The browser's viewer, complete with whatever toolbar it insists on.
   if (failed) {
     return <iframe className="preview-frame" title={label} src={`${url}#toolbar=0&view=FitH`} />
   }
