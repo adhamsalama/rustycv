@@ -18,19 +18,39 @@ import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
  * rasterising at all.
  */
 
-/** One rendered CV to turn into page images. `id` pairs it with its answer. */
+/**
+ * One rasterising job. `id` pairs it with its answer.
+ *
+ * `bytes` is sent **once per document**. Re-rasterising the same PDF at a new
+ * width — which is what dragging the window edge does — reuses the parsed
+ * document already here and sends `null`, because re-parsing a document that
+ * has not changed to lay it out slightly wider is exactly the work an
+ * iframe's viewer never did.
+ */
 export interface RasterRequest {
   id: number
-  /** The PDF, transferred — this buffer is detached once it is posted. */
-  bytes: ArrayBuffer
+  /** Which document these pages come from. */
+  doc: number
+  bytes: ArrayBuffer | null
   /** CSS pixels the page is laid out at. */
   width: number
   /** Device pixels per CSS pixel, already capped by the caller. */
   density: number
 }
 
+/** How long each half took, for the profiling the editor can switch on. */
+export interface RasterTiming {
+  /** Parsing. Zero when the document was already open. */
+  open: number
+  /** Painting every page. */
+  raster: number
+  reused: boolean
+}
+
 export type RasterMessage =
-  | { kind: 'rastered'; id: number; pages: ImageBitmap[] }
+  | { kind: 'rastered'; id: number; pages: ImageBitmap[]; timing: RasterTiming }
+  /** The document asked for is not the one held. Send the bytes again. */
+  | { kind: 'stale'; id: number }
   | { kind: 'failed'; id: number; message: string }
 
 interface CanvasAndContext {
@@ -93,11 +113,27 @@ function parsingWorker(): pdfjs.PDFWorker {
   return parser
 }
 
-const describe = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+/**
+ * The document currently parsed, and which one it is.
+ *
+ * Exactly one: the editor previews a single CV, and the expanded view is the
+ * same document at a different width. Holding more would mean deciding when to
+ * let go of PDFs nobody is looking at.
+ */
+let open: { doc: number; task: pdfjs.PDFDocumentLoadingTask; proxy: pdfjs.PDFDocumentProxy } | null =
+  null
 
-self.onmessage = async (event: MessageEvent<RasterRequest>) => {
-  const { id, bytes, width, density } = event.data
+async function openDocument(doc: number, bytes: ArrayBuffer) {
+  // Already here. The expanded preview sends the bytes for a document the
+  // inline one has just opened, because neither knows about the other; the
+  // copy it sent is simply dropped.
+  if (open?.doc === doc) return open
+
+  // Destroy the old one first: its pages hold on to decoded images, and two
+  // CVs' worth is twice what anybody is looking at.
+  const previous = open
+  open = null
+  await previous?.task.destroy()
 
   const task = pdfjs.getDocument({
     data: bytes,
@@ -109,13 +145,56 @@ self.onmessage = async (event: MessageEvent<RasterRequest>) => {
     disableFontFace: true,
     isOffscreenCanvasSupported: true,
   })
+  open = { doc, task, proxy: await task.promise }
+  return open
+}
 
+const describe = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error)
+
+/** Named so they are findable in the Performance panel's worker track. */
+function measure(name: string, start: number, end: number): number {
   try {
-    const document_ = await task.promise
-    const pages: ImageBitmap[] = []
+    performance.measure(name, { start, end })
+  } catch {
+    // User Timing is not worth failing a render over.
+  }
+  return end - start
+}
 
-    for (let number = 1; number <= document_.numPages; number += 1) {
-      const page = await document_.getPage(number)
+/**
+ * One job at a time.
+ *
+ * `renderWorker.ts` gets away without this because its handler is
+ * synchronous, but an `async` one yields at every `await` and the next message
+ * starts running inside it. Two overlapping jobs share one parsed document —
+ * so the second would destroy and reopen the document the first was still
+ * rasterising pages from. The preview and the expanded view are exactly that
+ * pair: two components, two widths, one PDF.
+ */
+let queue: Promise<void> = Promise.resolve()
+
+self.onmessage = (event: MessageEvent<RasterRequest>) => {
+  queue = queue.then(() => handle(event.data))
+}
+
+async function handle({ id, doc, bytes, width, density }: RasterRequest): Promise<void> {
+  try {
+    if (bytes === null && open?.doc !== doc) {
+      // The editor believed this document was still here — a worker restart,
+      // or another one took its place. It will send the bytes again.
+      self.postMessage({ kind: 'stale', id } satisfies RasterMessage)
+      return
+    }
+
+    const started = performance.now()
+    const held = bytes === null ? open : await openDocument(doc, bytes)
+    if (!held) throw new Error('No document to rasterise')
+    const opened = performance.now()
+
+    const pages: ImageBitmap[] = []
+    for (let number = 1; number <= held.proxy.numPages; number += 1) {
+      const page = await held.proxy.getPage(number)
       const unscaled = page.getViewport({ scale: 1 })
       const viewport = page.getViewport({ scale: (width / unscaled.width) * density })
       const canvas = new OffscreenCanvas(
@@ -130,15 +209,20 @@ self.onmessage = async (event: MessageEvent<RasterRequest>) => {
 
       pages.push(canvas.transferToImageBitmap())
     }
+    const rastered = performance.now()
+
+    const timing: RasterTiming = {
+      open: bytes === null ? 0 : measure('pdf: parse', started, opened),
+      raster: measure('pdf: rasterise', opened, rastered),
+      reused: bytes === null,
+    }
 
     // Transferred, not copied: an A4 page at 2x is about 5MB and there may be
     // several of them.
-    self.postMessage({ kind: 'rastered', id, pages } satisfies RasterMessage, pages)
+    self.postMessage({ kind: 'rastered', id, pages, timing } satisfies RasterMessage, pages)
   } catch (error) {
+    // A document that failed half-way through opening is not one to keep.
+    open = null
     self.postMessage({ kind: 'failed', id, message: describe(error) } satisfies RasterMessage)
-  } finally {
-    // Only the document: `task._worker` is null because the parser above was
-    // passed in, so this leaves it running for the next edit.
-    await task.destroy()
   }
 }

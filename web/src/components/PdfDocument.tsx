@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RasterMessage, RasterRequest } from '../pdfWorker'
+import { useDebounced } from '../hooks/useDebounced'
+import type { RasterMessage, RasterRequest, RasterTiming } from '../pdfWorker'
 
 /**
  * The rendered CV, drawn page by page onto canvases.
@@ -35,14 +36,47 @@ import type { RasterMessage, RasterRequest } from '../pdfWorker'
  * that answers the keyboard is the thing this file exists to stop.
  */
 
-// -------------------------------------------------------- tier 1: a worker
+// ----------------------------------------------------------- the worker
 
 let rasteriser: Worker | null = null
 /** Set once a worker has failed: one bad worker costs the preview once. */
 let rasteriserBroken = false
 let nextRequest = 1
+let nextDocument = 1
 
-const waiting = new Map<number, { resolve: (pages: ImageBitmap[]) => void; reject: (error: Error) => void }>()
+/**
+ * Which document the worker is holding parsed, as far as this side knows.
+ *
+ * The worker keeps exactly one, so this is a mirror of it and not a cache in
+ * its own right. Being wrong is survivable — the answer comes back `stale`
+ * and the bytes are sent again.
+ */
+let workerHolds: number | null = null
+
+/**
+ * A number per `Blob`, so the preview and the expanded view — two components,
+ * two widths, one document — are understood to be looking at the same thing.
+ */
+const documentIds = new WeakMap<Blob, number>()
+
+function documentId(blob: Blob): number {
+  let id = documentIds.get(blob)
+  if (id === undefined) {
+    id = nextDocument++
+    documentIds.set(blob, id)
+  }
+  return id
+}
+
+interface Rastered {
+  pages: ImageBitmap[]
+  timing: RasterTiming
+}
+
+const waiting = new Map<
+  number,
+  { resolve: (result: Rastered | 'stale') => void; reject: (error: Error) => void }
+>()
 
 function rasteriserWorker(): Worker {
   if (rasteriser) return rasteriser
@@ -60,7 +94,9 @@ function rasteriserWorker(): Worker {
       return
     }
     waiting.delete(message.id)
-    if (message.kind === 'rastered') pending.resolve(message.pages)
+
+    if (message.kind === 'rastered') pending.resolve({ pages: message.pages, timing: message.timing })
+    else if (message.kind === 'stale') pending.resolve('stale')
     else pending.reject(new Error(message.message))
   }
 
@@ -68,6 +104,7 @@ function rasteriserWorker(): Worker {
   // never now be answered.
   worker.onerror = () => {
     rasteriserBroken = true
+    workerHolds = null
     for (const pending of waiting.values()) pending.reject(new Error('The PDF worker stopped'))
     waiting.clear()
   }
@@ -76,16 +113,11 @@ function rasteriserWorker(): Worker {
   return worker
 }
 
-function rasteriseOffThread(
-  bytes: ArrayBuffer,
-  width: number,
-  density: number,
-): Promise<ImageBitmap[]> {
+function ask(request: RasterRequest): Promise<Rastered | 'stale'> {
   const worker = rasteriserWorker()
-  const id = nextRequest++
-  return new Promise<ImageBitmap[]>((resolve, reject) => {
-    waiting.set(id, { resolve, reject })
-    worker.postMessage({ id, bytes, width, density } satisfies RasterRequest, [bytes])
+  return new Promise((resolve, reject) => {
+    waiting.set(request.id, { resolve, reject })
+    worker.postMessage(request, request.bytes ? [request.bytes] : [])
   })
 }
 
@@ -101,22 +133,41 @@ function adopt(bitmap: ImageBitmap): HTMLCanvasElement {
   return canvas
 }
 
-// ------------------------------------------------------------- the component
-
-async function rasterise(
-  blob: Blob,
-  width: number,
-  density: number,
-): Promise<HTMLCanvasElement[]> {
+async function rasterise(blob: Blob, width: number, density: number): Promise<Rastered> {
   if (rasteriserBroken || typeof OffscreenCanvas === 'undefined') {
     throw new Error('No off-thread rasteriser')
   }
+
+  const doc = documentId(blob)
+
   try {
-    // A fresh ArrayBuffer: it is transferred to the worker, which detaches it
-    // for everybody else — including the second copy of this component that
-    // expanding the preview mounts.
-    const bitmaps = await rasteriseOffThread(await blob.arrayBuffer(), width, density)
-    return bitmaps.map(adopt)
+    // Send the bytes only when the worker is not already holding this
+    // document. Re-rasterising at a new width is what dragging the window
+    // edge does, and re-parsing an unchanged PDF to lay it out wider is
+    // precisely the work an iframe's viewer never did.
+    const reuse = workerHolds === doc
+    let answer = await ask({
+      id: nextRequest++,
+      doc,
+      bytes: reuse ? null : await blob.arrayBuffer(),
+      width,
+      density,
+    })
+
+    if (answer === 'stale') {
+      // The worker lost it — restarted, or another document took its place.
+      answer = await ask({
+        id: nextRequest++,
+        doc,
+        bytes: await blob.arrayBuffer(),
+        width,
+        density,
+      })
+      if (answer === 'stale') throw new Error('The PDF worker will not hold a document')
+    }
+
+    workerHolds = doc
+    return answer
   } catch (error) {
     // Do not keep paying for a worker that has already proved it cannot do
     // this; the next render goes straight to the iframe.
@@ -124,6 +175,33 @@ async function rasterise(
     throw error
   }
 }
+
+/**
+ * Off by default, and not a build flag: the question "is the preview slow"
+ * gets asked of a running instance, which is usually not a dev server.
+ * `localStorage['rustycv:profile'] = '1'`, then reload.
+ *
+ * The `performance.measure` entries are written either way — they cost
+ * nothing and are what the Performance panel reads.
+ */
+function profiling(): boolean {
+  try {
+    return localStorage.getItem('rustycv:profile') !== null
+  } catch {
+    return false
+  }
+}
+
+// ------------------------------------------------------------- the component
+
+/**
+ * How long the width has to hold still before the pages are redrawn.
+ *
+ * A resize is continuous and every step of it would otherwise re-rasterise
+ * every page — the one thing the browser's own viewer did better, because it
+ * re-laid out a document it already had.
+ */
+const RESIZE_SETTLE_MS = 150
 
 export function PdfDocument({
   blob,
@@ -138,8 +216,14 @@ export function PdfDocument({
   label: string
 }) {
   const host = useRef<HTMLDivElement>(null)
-  const [width, setWidth] = useState(0)
+  const [measured, setMeasured] = useState(0)
   const [failed, setFailed] = useState(false)
+
+  // The settled width, except for the very first one: `useDebounced` starts
+  // out holding its initial value, so until it has caught up once the raw
+  // measurement stands in and the first preview is not held back 150ms.
+  const settled = useDebounced(measured, RESIZE_SETTLE_MS)
+  const width = settled || measured
 
   // `onPages` is called from inside the render effect; holding it in a ref
   // keeps a caller's inline arrow from re-rendering every page.
@@ -151,10 +235,10 @@ export function PdfDocument({
     if (!element) return
 
     const observer = new ResizeObserver((entries) => {
-      const measured = Math.round(entries[0]?.contentRect.width ?? 0)
-      // Every page is re-rasterised on a width change, so ignore the
-      // sub-pixel noise a scrollbar appearing and disappearing produces.
-      setWidth((current) => (Math.abs(current - measured) > 8 ? measured : current))
+      const next = Math.round(entries[0]?.contentRect.width ?? 0)
+      // Still a threshold as well as the debounce: a scrollbar appearing and
+      // disappearing is a change the pages need not notice at all.
+      setMeasured((current) => (Math.abs(current - next) > 8 ? next : current))
     })
     observer.observe(element)
     return () => observer.disconnect()
@@ -166,25 +250,51 @@ export function PdfDocument({
     let cancelled = false
 
     void (async () => {
+      const asked = performance.now()
       try {
         // Cap the ratio: a 3x display would quadruple the pixels for a
         // difference nobody can see on a page this size.
         const density = Math.min(window.devicePixelRatio || 1, 2)
-        const pages = await rasterise(blob, width, density)
-        if (cancelled) return
+        const { pages, timing } = await rasterise(blob, width, density)
+        if (cancelled) {
+          for (const page of pages) page.close()
+          return
+        }
 
-        report.current?.(pages.length)
-        pages.forEach((canvas, index) => {
+        const adopted = performance.now()
+        const canvases = pages.map((bitmap, index) => {
+          const canvas = adopt(bitmap)
           canvas.className = 'pdf-page'
           canvas.setAttribute('role', 'img')
           canvas.setAttribute('aria-label', `${label}, page ${index + 1} of ${pages.length}`)
+          return canvas
         })
+
+        report.current?.(canvases.length)
 
         // Swapped in one call, so the scroll position survives: the old pages
         // are never off the document long enough for the container to collapse
         // and reset. This is what the iframe could not do — changing its src
         // sent every edit back to the top of the CV.
-        host.current?.replaceChildren(...pages)
+        host.current?.replaceChildren(...canvases)
+
+        const done = performance.now()
+        try {
+          performance.measure('pdf: adopt', { start: adopted, end: done })
+          performance.measure('pdf: preview', { start: asked, end: done })
+        } catch {
+          // User Timing is not worth failing a preview over.
+        }
+        if (profiling()) {
+          // eslint-disable-next-line no-console
+          console.debug(
+            `[rustycv] preview ${Math.round(done - asked)}ms` +
+              ` = parse ${Math.round(timing.open)} + raster ${Math.round(timing.raster)}` +
+              ` + adopt ${Math.round(done - adopted)}` +
+              `${timing.reused ? ' (document reused)' : ''}` +
+              ` — ${canvases.length} page(s) at ${width}px`,
+          )
+        }
       } catch (error) {
         if (cancelled) return
         // A cancelled render task throws on the way out; that is not a failure.

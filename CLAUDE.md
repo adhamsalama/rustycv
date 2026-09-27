@@ -292,6 +292,30 @@ reference away from breaking:
   `task.destroy()` terminates it, which would mean spawning and killing a
   worker over a 1.2MB script on every pause in typing.
 
+**The bytes are sent once per document.** Re-rasterising at a new width —
+which is what dragging the window edge does — reuses the document the worker
+still holds, because re-parsing an unchanged PDF to lay it out slightly wider
+is exactly the work the browser's viewer never did. The editor mirrors which
+document that is; being wrong is survivable, the answer comes back `stale` and
+the bytes go again. The width is also debounced (`RESIZE_SETTLE_MS`), with the
+raw measurement standing in until the debounce has caught up once so the first
+preview is not held back.
+
+**The worker queues its own jobs.** `renderWorker.ts` gets away without that
+because its handler is synchronous; an `async` one yields at every `await` and
+the next message starts running inside it. Two overlapping jobs share one
+parsed document, so the second would destroy the one the first was still
+rasterising from — and the preview and the expanded view are exactly that
+pair: two components, two widths, one PDF.
+
+**Timings.** `performance.measure` entries are always written — `pdf: parse`
+and `pdf: rasterise` on the worker's track, `pdf: adopt` and `pdf: preview` on
+the main thread's — so the Performance panel needs no build flag. A summary
+line per render is logged when `localStorage['rustycv:profile']` is set;
+deliberately a runtime switch rather than `import.meta.env.DEV`, because "is
+the preview slow" is asked of a running instance, which is usually not a dev
+server.
+
 **There is no middle tier that paints on the main thread**, and that is
 deliberate: a worker is its own module graph, so a fallback copy of pdf.js is
 a *second* 131kB gzipped in the bundle for a path nothing reaches — every
