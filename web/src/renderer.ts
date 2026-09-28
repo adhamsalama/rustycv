@@ -72,6 +72,23 @@ export async function renderPdf(
  */
 let unavailable: string | null = null
 
+/**
+ * Start fetching and instantiating the wasm module before the first render.
+ *
+ * Otherwise that multi-megabyte download begins only once the document has
+ * loaded and the first render asks for it. Only for `browser` mode — warming
+ * it under `server` would be work on the machine the operator ruled out — and
+ * a module that will not start is recorded exactly as a render would record it.
+ */
+export function warmBrowserRenderer(): void {
+  if (unavailable) return
+  void import('./localRender')
+    .then((local) => local.browserRenderer())
+    .catch((error: unknown) => {
+      unavailable = describe(error)
+    })
+}
+
 async function renderHere(document: CvDocument, signal?: AbortSignal): Promise<Blob> {
   if (unavailable) throw new Error(unavailable)
 

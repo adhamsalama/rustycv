@@ -12,6 +12,7 @@ import { SectionEditor } from '../components/SectionEditor'
 import { ThemePanel } from '../components/ThemePanel'
 import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { warmRasteriser } from '../components/PdfDocument'
+import { warmBrowserRenderer } from '../renderer'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { DownloadPdf } from '../components/DownloadPdf'
 import { ShareControl } from '../components/ShareControl'
@@ -91,6 +92,12 @@ export function Editor() {
   useEffect(() => {
     warmRasteriser()
   }, [])
+
+  // The same for the wasm renderer, as soon as the config says to use it —
+  // which is usually before the document has arrived.
+  useEffect(() => {
+    if (config?.renderMode === 'browser') warmBrowserRenderer()
+  }, [config?.renderMode])
 
   useEffect(() => {
     if (data) store.load(data.id, data.title, data.document)
