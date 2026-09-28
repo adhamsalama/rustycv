@@ -93,6 +93,22 @@ const EMBEDDED: &[(&str, &[u8])] = &[
         "Source Serif 4",
         include_bytes!("../../../assets/fonts/SourceSerif4-BoldIt.ttf"),
     ),
+    (
+        "IBM Plex Mono",
+        include_bytes!("../../../assets/fonts/IBMPlexMono-Regular.ttf"),
+    ),
+    (
+        "IBM Plex Mono",
+        include_bytes!("../../../assets/fonts/IBMPlexMono-Italic.ttf"),
+    ),
+    (
+        "IBM Plex Mono",
+        include_bytes!("../../../assets/fonts/IBMPlexMono-SemiBold.ttf"),
+    ),
+    (
+        "IBM Plex Mono",
+        include_bytes!("../../../assets/fonts/IBMPlexMono-Bold.ttf"),
+    ),
 ];
 
 /// The font families a user may choose in the theme picker, deduplicated and

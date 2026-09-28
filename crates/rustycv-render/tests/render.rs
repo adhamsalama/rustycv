@@ -1334,7 +1334,7 @@ fn highlights_take_the_same_blocks_a_description_does() {
 #[test]
 fn every_template_renders_paragraphs_and_both_kinds_of_list() {
     // flowcv carries its own entry geometry, so it renders this through a
-    // different path from the five that share `common.typ`.
+    // different path from the ones that share `common.typ`.
     let summary = json!([
         { "kind": "paragraph", "runs": [{ "text": "Led the rewrite." }] },
         { "kind": "bullet", "runs": [{ "text": "Cut p99 latency." }] },
@@ -1352,9 +1352,12 @@ fn every_template_renders_paragraphs_and_both_kinds_of_list() {
         };
         // Against the same page with no summary at all, because a template's
         // own chrome — modern's rule, banner's block — inks rows of its own.
+        // `plain` titles its summary "Summary" for a parser's sake, and only
+        // when there is one — so its heading is part of what a summary adds.
+        let chrome = if template.id == "plain" { 1 } else { 0 };
         assert_eq!(
             lines(summary.clone()) as i64 - lines(json!("")) as i64,
-            4,
+            4 + chrome,
             "template `{}` should draw all four blocks",
             template.id
         );

@@ -402,7 +402,14 @@
 
     (style.heading)(section.title)
 
-    if section.kind == "experience" {
+    // A template that needs different geometry for one kind of section — a
+    // timeline rail, a date gutter — hands its own renderer in here rather
+    // than forking the whole dispatch. `(items, style, section)`.
+    let overrides = style.at("sections", default: (:))
+    if section.kind in overrides {
+      (overrides.at(section.kind))(items, style, section)
+    }
+    else if section.kind == "experience" {
       experience-section(items, style, options: experience-options(section))
     }
     else if section.kind == "education" { education-section(items, style) }

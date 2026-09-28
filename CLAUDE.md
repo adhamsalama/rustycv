@@ -109,6 +109,22 @@ rendering in `templates/common.typ` and differ only in page setup plus a `style`
 dict of typographic hooks. A fix to entry layout belongs there, once — a new
 template that needs different *entry geometry* is the rare case, not the norm.
 
+When one does, it overrides only the section kinds it changes, through the
+style dict's `sections` map — `(kind: (items, style, section) => ...)`, which
+`render-sections` checks before its own dispatch. `timeline` (experience),
+`academic` (the dated kinds, plus the rest indented to its gutter), `mono`
+(skills and projects) and `sidebar` (its rail's kinds) do this. An override of
+`experience` has to honour `experience-options(section)` itself;
+`every_template_honours_the_experience_switches` catches one that does not.
+
+`sidebar` splits sections by *kind*, not position: skills, languages and
+interests go in the rail. Its tint is a block sized to the rail's content, not
+a page-high band — a band would ink rows at the page's foot whatever the type
+size and fail `spacing_scales_with_type_size`. `academic`'s footer only
+appears from two pages up for the same reason. And `editorial` hangs a quote
+mark beside its summary rather than a bar down it, because a bar inks every
+row and merges the lines `text_line_starts` counts.
+
 `banner` is the only one that sets text **on** the accent, so it derives its ink
 from the accent's brightness rather than assuming a dark one; anything it draws
 on the paper instead uses the accent darkened back to a readable weight.

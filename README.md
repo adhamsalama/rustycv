@@ -373,6 +373,13 @@ the third.
 | `engineer` | Dense single column, headline and contact on one line, rules running out of each heading        |
 | `banner`   | Name and contact reversed out of a filled accent block, accent bars beside headings             |
 | `compact`  | Tighter type and spacing, for CVs spilling onto a second page                                   |
+| `sidebar`   | Two columns: a tinted rail for contact, skills, languages and interests beside the story        |
+| `academic`  | Serif CV with dates in a left gutter; runs to several pages, numbered from the second           |
+| `executive` | Wide-tracked capital name, summary as a larger lead paragraph, generous whitespace              |
+| `timeline`  | Experience as a rail per employer with a node at every role                                     |
+| `mono`      | Monospace name, headings and dates; skills and project stacks as code chips                     |
+| `editorial` | Large display-serif name, numbered sections, the summary as a pull quote                        |
+| `plain`     | Black text, labelled contact lines, no graphics — for portals that parse badly                  |
 
 `engineer` is the one aimed at software CVs: one column, no icons or graphics,
 nothing a keyword parser has to guess at, the headline and contact details on a
@@ -381,6 +388,9 @@ single line, and a rhythm a notch tighter than `classic` at the same type size.
 Every template but `flowcv` shares its section-rendering logic in
 `templates/common.typ` and differs only in page setup plus a `style` dict of
 typographic hooks, so a fix to entry layout lands in all of them at once.
+`timeline`, `academic`, `mono` and `sidebar` swap in their own renderer for
+the one or two section kinds whose geometry they change, through the style
+dict's `sections` map, and share the rest.
 `flowcv` carries its own entry geometry because its 55/45 split, hairline and
 heading band are specific enough that reusing the shared ones would distort
 both.
@@ -456,7 +466,7 @@ restart the server.
 
 ## Third-party assets
 
-Fonts (Inter, IBM Plex Sans, Source Sans 3, Source Serif 4 — all SIL OFL) and
+Fonts (Inter, IBM Plex Sans, IBM Plex Mono, Source Sans 3, Source Serif 4 — all SIL OFL) and
 icons (Font Awesome Free 6, CC BY 4.0) are embedded in the binary. See
 [NOTICE.md](NOTICE.md); licence texts are in `assets/licenses/`.
 

@@ -9,6 +9,7 @@ RustyCV embeds the following into its binary. Their licences are reproduced in
 | --- | --- | --- |
 | Inter | [rsms/inter](https://github.com/rsms/inter) | SIL Open Font License 1.1 |
 | IBM Plex Sans | [IBM/plex](https://github.com/IBM/plex) | SIL Open Font License 1.1 |
+| IBM Plex Mono | [IBM/plex](https://github.com/IBM/plex) | SIL Open Font License 1.1 |
 | Source Sans 3 | [adobe-fonts/source-sans](https://github.com/adobe-fonts/source-sans) | SIL Open Font License 1.1 |
 | Source Serif 4 | [adobe-fonts/source-serif](https://github.com/adobe-fonts/source-serif) | SIL Open Font License 1.1 |
 

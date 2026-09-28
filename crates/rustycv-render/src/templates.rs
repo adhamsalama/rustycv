@@ -166,6 +166,62 @@ pub const TEMPLATES: &[Template] = &[
         // standard numbers rather than pre-shrunk ones.
         metrics: STANDARD,
     },
+    Template {
+        id: "sidebar",
+        name: "Sidebar",
+        description: "Two columns: a tinted rail for contact, skills and languages beside the story.",
+        source: include_str!("../../../templates/sidebar/main.typ"),
+        metrics: STANDARD,
+    },
+    Template {
+        id: "academic",
+        name: "Academic",
+        description: "A sober serif CV with dates in a left gutter, built to run to several pages.",
+        source: include_str!("../../../templates/academic/main.typ"),
+        metrics: STANDARD,
+    },
+    Template {
+        id: "executive",
+        name: "Executive",
+        description: "Wide-tracked capitals, a lead-paragraph summary and a lot of air.",
+        source: include_str!("../../../templates/executive/main.typ"),
+        metrics: Metrics {
+            margin_mm: 20.0,
+            section_gap_mm: 6.0,
+            ..STANDARD
+        },
+    },
+    Template {
+        id: "timeline",
+        name: "Timeline",
+        description: "Experience as a career path: one rail per employer with a node at every role.",
+        source: include_str!("../../../templates/timeline/main.typ"),
+        metrics: STANDARD,
+    },
+    Template {
+        id: "mono",
+        name: "Mono",
+        description: "A README in print: monospace headings and dates, skills as code chips.",
+        source: include_str!("../../../templates/mono/main.typ"),
+        metrics: STANDARD,
+    },
+    Template {
+        id: "editorial",
+        name: "Editorial",
+        description: "A large display-serif name, numbered sections and the summary as a pull quote.",
+        source: include_str!("../../../templates/editorial/main.typ"),
+        metrics: Metrics {
+            margin_mm: 18.0,
+            ..STANDARD
+        },
+    },
+    Template {
+        id: "plain",
+        name: "Plain",
+        description: "Black text, labelled contact lines, no graphics: for portals that parse badly.",
+        source: include_str!("../../../templates/plain/main.typ"),
+        metrics: STANDARD,
+    },
 ];
 
 pub fn get(id: &str) -> Option<&'static Template> {
