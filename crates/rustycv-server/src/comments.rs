@@ -1,6 +1,7 @@
 //! Comments on a published CV, left by anonymous visitors to its share link.
 //!
-//! Visitors can post and read; only the CV's owner can delete. There is no
+//! Visitors can post but never read: comments are for the CV's owner alone,
+//! who reads and deletes them from the editor. There is no
 //! account to scope a visitor by, so the brakes are elsewhere: the per-address
 //! and per-CV windows in `routes.rs`, and a hard ceiling per CV enforced inside
 //! the `INSERT` so that counting and writing cannot race.
@@ -68,18 +69,6 @@ fn row_to_comment(row: sqlx::sqlite::SqliteRow) -> Comment {
         body: row.get("body"),
         created_at: row.get("created_at"),
     }
-}
-
-/// The comments behind a share link, oldest first. `NotFound` unless the CV is
-/// currently published — an unpublished CV's comments are as hidden as it is.
-pub async fn list_published(pool: &SqlitePool, public_id: &str) -> ApiResult<Vec<Comment>> {
-    // With comments switched off the list is empty: the owner has hidden
-    // them, not lost them, and switching back on brings them back.
-    let (cv_id, enabled) = published_cv(pool, public_id).await?;
-    if !enabled {
-        return Ok(vec![]);
-    }
-    list_for(pool, &cv_id).await
 }
 
 /// The CV behind a live link, and whether it takes comments.

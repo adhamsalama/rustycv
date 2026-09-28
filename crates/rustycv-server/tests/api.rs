@@ -1660,7 +1660,7 @@ async fn published_cv(app: &TestApp) -> (String, String) {
 }
 
 #[tokio::test]
-async fn switching_comments_off_refuses_new_ones_and_hides_the_rest() {
+async fn switching_comments_off_refuses_new_ones_and_keeps_the_rest() {
     let app = TestApp::new().await;
     let (id, public_id) = published_cv(&app).await;
     let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "hello").await;
@@ -1678,29 +1678,16 @@ async fn switching_comments_off_refuses_new_ones_and_hides_the_rest() {
         )
         .await;
     assert_eq!(info["commentsEnabled"], false);
-    let (_, listed) = app
-        .json_as(
-            None,
-            "GET",
-            &format!("/api/public/cvs/{public_id}/comments"),
-            json!({}),
-        )
+    let (_, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
         .await;
-    assert!(listed.as_array().unwrap().is_empty(), "hidden while off");
-
+    assert_eq!(owned.as_array().unwrap().len(), 1, "what was left is kept");
     set_comments(&app, &id, true).await;
-    let (_, listed) = app
-        .json_as(
-            None,
-            "GET",
-            &format!("/api/public/cvs/{public_id}/comments"),
-            json!({}),
-        )
-        .await;
+    let (status, _) = comment_from(&app, "10.0.0.2", &public_id, "again").await;
     assert_eq!(
-        listed.as_array().unwrap().len(),
-        1,
-        "and back when on again"
+        status,
+        StatusCode::CREATED,
+        "and posting works when on again"
     );
 
     let other = app.register("someone-else@example.com").await;
@@ -1772,6 +1759,8 @@ async fn a_visitor_comments_and_only_the_owner_can_remove_it() {
     assert_eq!(comment["body"], "Strong CV.");
     let comment_id = comment["id"].as_str().unwrap().to_string();
 
+    // A visitor can post but never read: not anonymously, and not with
+    // another account's session either.
     let (status, listed) = app
         .json_as(
             None,
@@ -1780,8 +1769,17 @@ async fn a_visitor_comments_and_only_the_owner_can_remove_it() {
             json!({}),
         )
         .await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(listed.as_array().unwrap().len(), 1);
+    assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED);
+    assert!(!listed.to_string().contains("Strong CV."), "{listed}");
+    let (_, info) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}"),
+            json!({}),
+        )
+        .await;
+    assert!(!info.to_string().contains("Strong CV."), "{info}");
 
     let (status, owned) = app
         .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
@@ -1807,19 +1805,14 @@ async fn a_visitor_comments_and_only_the_owner_can_remove_it() {
 
     let (status, _) = app.json("DELETE", &uri, json!({})).await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (_, listed) = app
-        .json_as(
-            None,
-            "GET",
-            &format!("/api/public/cvs/{public_id}/comments"),
-            json!({}),
-        )
+    let (_, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
         .await;
-    assert!(listed.as_array().unwrap().is_empty());
+    assert!(owned.as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
-async fn an_unpublished_cv_takes_no_comments_and_shows_none() {
+async fn an_unpublished_cv_takes_no_comments() {
     let app = TestApp::new().await;
     let (id, public_id) = published_cv(&app).await;
     let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "hello").await;
@@ -1829,15 +1822,6 @@ async fn an_unpublished_cv_takes_no_comments_and_shows_none() {
         .await;
 
     let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "again").await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    let (status, _) = app
-        .json_as(
-            None,
-            "GET",
-            &format!("/api/public/cvs/{public_id}/comments"),
-            json!({}),
-        )
-        .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     let (status, _) = comment_from(&app, "10.0.0.1", "does-not-exist", "hi").await;
     assert_eq!(status, StatusCode::NOT_FOUND);

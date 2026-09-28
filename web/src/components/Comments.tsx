@@ -39,32 +39,24 @@ function CommentList({
   )
 }
 
-/** What a visitor to a share link sees under the PDF. */
+/**
+ * What a visitor to a share link sees under the PDF: a way to send the owner a
+ * note, and nothing else. Comments are private to the owner, so nobody else's
+ * are shown here — not even the one just sent.
+ */
 export function PublicComments({ publicId }: { publicId: string }) {
-  const queryClient = useQueryClient()
   const [author, setAuthor] = useState('')
   const [body, setBody] = useState('')
 
-  const { data: comments = [] } = useQuery({
-    queryKey: ['share-comments', publicId],
-    queryFn: () => api.listPublishedComments(publicId),
-  })
-
   const post = useMutation({
     mutationFn: () => api.postComment(publicId, author, body),
-    onSuccess: (comment) => {
-      setBody('')
-      queryClient.setQueryData<CvComment[]>(['share-comments', publicId], (old = []) => [
-        ...old,
-        comment,
-      ])
-    },
+    onSuccess: () => setBody(''),
   })
 
   return (
-    <section className="share-comments" aria-label="Comments">
-      <h2>Comments</h2>
-      <CommentList comments={comments} />
+    <section className="share-comments" aria-label="Leave a comment">
+      <h2>Leave a comment</h2>
+      <p className="muted small">Only the owner of this CV will see it.</p>
       <form
         className="comment-form"
         onSubmit={(e) => {
@@ -79,21 +71,29 @@ export function PublicComments({ publicId }: { publicId: string }) {
           onChange={(e) => setAuthor(e.target.value)}
         />
         <textarea
-          placeholder="Leave a comment"
+          placeholder="Your comment"
           required
           maxLength={MAX_BODY}
           rows={3}
           value={body}
-          onChange={(e) => setBody(e.target.value)}
+          onChange={(e) => {
+            setBody(e.target.value)
+            if (post.isSuccess) post.reset()
+          }}
         />
         {post.isError ? (
           <p className="auth-error" role="alert">
             {(post.error as Error).message}
           </p>
         ) : null}
+        {post.isSuccess ? (
+          <p className="muted small" role="status">
+            Sent. Thanks!
+          </p>
+        ) : null}
         <div>
           <button type="submit" className="primary" disabled={post.isPending || !body.trim()}>
-            {post.isPending ? 'Posting…' : 'Post comment'}
+            {post.isPending ? 'Sending…' : 'Send comment'}
           </button>
         </div>
       </form>
@@ -152,11 +152,11 @@ export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void })
             disabled={toggle.isPending}
             onChange={(e) => toggle.mutate(e.target.checked)}
           />
-          <span>Let visitors to the share link leave comments</span>
+          <span>Let visitors to the share link send you comments</span>
         </label>
         {cv.commentsEnabled ? null : (
           <p className="muted small">
-            Comments are off: visitors see none and cannot post. Existing ones are kept.
+            Comments are off: visitors cannot send new ones. These are kept.
           </p>
         )}
         {isLoading ? (

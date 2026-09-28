@@ -32,10 +32,7 @@ pub fn router() -> Router<AppState> {
         // since the limit is keyed on the CV in the path, not just the caller.
         .route("/public/cvs/{public_id}", get(get_published_cv))
         .route("/public/cvs/{public_id}/pdf", get(download_published_pdf))
-        .route(
-            "/public/cvs/{public_id}/comments",
-            get(list_published_comments).post(post_comment),
-        );
+        .route("/public/cvs/{public_id}/comments", post(post_comment));
 
     let protected = Router::new()
         .route("/config", get(app_config))
@@ -468,20 +465,9 @@ async fn download_published_pdf(
 
 // ------------------------------------------------------------------ comments
 
-/// Reading is one indexed query over at most `MAX_COMMENTS` rows, so it sits
-/// behind the general per-caller limit only; spending the share link's render
-/// allowance on it would cost a visitor PDF loads for reading text.
-async fn list_published_comments(
-    State(state): State<AppState>,
-    Path(public_id): Path<String>,
-) -> ApiResult<Json<Vec<comments::Comment>>> {
-    Ok(Json(
-        comments::list_published(&state.pool, &public_id).await?,
-    ))
-}
-
-/// Anonymous, and shown to every later visitor — so it has its own windows,
-/// per address and per CV, far tighter than reading's, on top of the cap on
+/// Anonymous, and written for the owner alone — visitors can post but never
+/// read. It has its own windows, per address and per CV, far tighter than
+/// reading the link's, on top of the cap on
 /// how many one CV can hold at all.
 async fn post_comment(
     State(state): State<AppState>,

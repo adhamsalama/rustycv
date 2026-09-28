@@ -92,8 +92,7 @@ export const api = {
       `/public/cvs/${publicId}`,
     ),
 
-  listPublishedComments: (publicId: string) =>
-    request<CvComment[]>(`/public/cvs/${publicId}/comments`),
+  /** Visitors can post but never read — comments are for the owner alone. */
   postComment: (publicId: string, author: string, body: string) =>
     request<CvComment>(`/public/cvs/${publicId}/comments`, {
       method: 'POST',
