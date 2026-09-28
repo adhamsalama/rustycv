@@ -56,7 +56,7 @@ export function PublicComments({ publicId }: { publicId: string }) {
   })
 
   return (
-    <section className="share-comments" aria-label="Leave a comment">
+    <section id="comments" className="share-comments" aria-label="Leave a comment">
       <h2>Leave a comment</h2>
       <p className="muted small">Only the owner of this CV will see it.</p>
       <form
@@ -73,6 +73,7 @@ export function PublicComments({ publicId }: { publicId: string }) {
           onChange={(e) => setAuthor(e.target.value)}
         />
         <textarea
+          id="comment-body"
           placeholder="Your comment"
           required
           maxLength={MAX_BODY}

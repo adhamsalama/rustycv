@@ -344,6 +344,12 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .share-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .share-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .share-heading h1 { font-size: var(--text-lg); margin: 0; }
+.share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.share-actions a { text-decoration: none; }
+.share-invite { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-soft); color: var(--text); text-decoration: none; font-size: var(--text-sm); }
+.share-invite:hover { background: var(--hover); }
+.share-invite .icon { color: var(--accent); flex-shrink: 0; }
+.share-comments { scroll-margin-top: 16px; }
 .share-embed { height: 85vh; height: 85dvh; flex-shrink: 0; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .share-foot { flex-shrink: 0; }
 

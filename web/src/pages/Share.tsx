@@ -5,6 +5,7 @@ import { api, ApiError } from '../api'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { SiteFooter } from '../components/SiteFooter'
 import { PublicComments } from '../components/Comments'
+import { Icon } from '../components/Icon'
 
 /**
  * What a share link opens to. Outside `AuthGate` in `main.tsx` on purpose —
@@ -14,6 +15,17 @@ import { PublicComments } from '../components/Comments'
  * exact same render path the owner's own preview and download use, just
  * behind a public, rate-limited route instead of an authenticated one.
  */
+/**
+ * The comment form sits under a page-high PDF, where nobody scrolls to by
+ * chance. Both the button and the invite jump there and put the cursor in
+ * the box, so the next thing typed is the comment.
+ */
+function jumpToComments(e: React.MouseEvent) {
+  e.preventDefault()
+  document.getElementById('comments')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  document.getElementById('comment-body')?.focus({ preventScroll: true })
+}
+
 export function Share() {
   const { publicId = '' } = useParams()
 
@@ -52,10 +64,27 @@ export function Share() {
       <main className="share-body">
         <div className="share-heading">
           <h1>{data?.fullName || data?.title}</h1>
-          <a className="primary" href={api.publicPdfUrl(publicId)} download>
-            Download PDF
-          </a>
+          <div className="share-actions">
+            {data?.commentsEnabled ? (
+              <a className="secondary" href="#comments" onClick={jumpToComments}>
+                <Icon name="comment" />
+                Leave a comment
+              </a>
+            ) : null}
+            <a className="primary" href={api.publicPdfUrl(publicId)} download>
+              Download PDF
+            </a>
+          </div>
         </div>
+        {data?.commentsEnabled ? (
+          <a className="share-invite" href="#comments" onClick={jumpToComments}>
+            <Icon name="comment" />
+            <span>
+              <strong>Feedback welcome.</strong> The owner of this CV has opened it for comments —
+              only they will see what you write.
+            </span>
+          </a>
+        ) : null}
         <embed
           className="share-embed"
           src={api.publicPdfUrl(publicId)}
