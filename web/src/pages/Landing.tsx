@@ -27,11 +27,11 @@ export function Landing() {
       <main>
         <section className="landing-hero">
           <div className="landing-pitch">
-            <h1>Your CV is data. The PDF is a render of it.</h1>
+            <h1>Take the rust off your CV.</h1>
             <p className="lede">
-              Write the thing once. Then change the template, the type size, the accent or the
-              spacing, and the same document comes back typeset a different way — because nothing
-              is baked into a file. The PDF is rebuilt from scratch every time you look at it.
+              Write it once, then make it look new whenever you like. Pick a template, nudge the
+              type size, the accent or the spacing, and the same CV comes back freshly typeset —
+              nothing to retype, nothing to lay out again.
             </p>
             <p className="landing-facts">
               Typeset with Typst <span aria-hidden="true">·</span> exports as JSON
