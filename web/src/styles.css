@@ -144,6 +144,10 @@
      decorative, so it is the same amber whichever palette is on. */
   --notice: light-dark(#b45309, #c98a1e);
 
+  /* The logo's rust. The brand, not the theme: the same whichever palette is
+     on, lifted in dark mode so it still reads as orange on a deep surface. */
+  --rust: light-dark(#b7410e, #e0703a);
+
   /* Shadows are built out of a tinted colour rather than wrapped in
      `light-dark()` — that function takes a <color>, and wrapping a whole
      shadow value in it makes the declaration invalid and drops the shadow
@@ -943,7 +947,16 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
   padding-block: 20px;
 }
 
-.wordmark { font: 600 var(--text-xl)/1 var(--font-display); letter-spacing: -0.02em; }
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  font: 700 var(--text-xl)/1 var(--font-display);
+  letter-spacing: -0.03em;
+  color: var(--strong);
+}
+.logo svg { width: 1.35em; height: 1.35em; flex: none; }
+.logo-rust { color: var(--rust); }
 
 .landing h1 {
   /* Scales with the viewport instead of breaking at one arbitrary width. */

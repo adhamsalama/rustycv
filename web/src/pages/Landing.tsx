@@ -1,4 +1,5 @@
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { Logo } from '../components/Logo'
 import { AuthForm } from '../components/AuthForm'
 import { SiteFooter } from '../components/SiteFooter'
 import { TemplateMock } from '../components/TemplateMock'
@@ -20,7 +21,7 @@ export function Landing() {
   return (
     <div className="landing">
       <header className="landing-bar">
-        <span className="wordmark">RustyCV</span>
+        <Logo />
         <AppearanceToggle />
       </header>
 

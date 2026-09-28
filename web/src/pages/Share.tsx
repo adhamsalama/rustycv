@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { Logo } from '../components/Logo'
 import { SiteFooter } from '../components/SiteFooter'
 import { PublicComments } from '../components/Comments'
 import { Icon } from '../components/Icon'
@@ -58,7 +59,7 @@ export function Share() {
   return (
     <div className="share-page">
       <header className="landing-bar">
-        <span className="wordmark">RustyCV</span>
+        <Logo />
         <AppearanceToggle />
       </header>
       <main className="share-body">

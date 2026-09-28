@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import { AccountMenu } from '../components/AccountMenu'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { Logo } from '../components/Logo'
 import { SiteFooter } from '../components/SiteFooter'
 import type { CvDocument } from '../types'
 
@@ -46,7 +47,9 @@ export function Dashboard() {
     <main className="dashboard">
       <header className="dashboard-head">
         <div>
-          <h1>RustyCV</h1>
+          <h1>
+            <Logo />
+          </h1>
           <p className="muted">
             Your CVs are stored as data, not PDFs — restyle them any time, and the PDF is rebuilt
             from scratch.
