@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import type { Cv, CvComment } from '../types'
@@ -104,8 +103,12 @@ export function PublicComments({ publicId }: { publicId: string }) {
   )
 }
 
-/** The owner's view of what visitors have left, with a way to remove it. */
-export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void }) {
+/**
+ * The owner's view of what visitors have left, with a way to remove it. A pane
+ * of the editor, beside Details and Design, rather than a dialog: reading a
+ * hundred comments wants the room.
+ */
+export function CommentsPanel({ cv }: { cv: Cv }) {
   const cvId = cv.id
   const queryClient = useQueryClient()
   // Comes back as the full `Cv`, like publishing does, so it goes straight
@@ -115,21 +118,26 @@ export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void })
     onSuccess: (updated) => queryClient.setQueryData(['cv', cvId], updated),
   })
   const key = ['cv-comments', cvId]
-  const { data: comments, isLoading } = useQuery({
+  const {
+    data: comments,
+    isLoading,
+    dataUpdatedAt,
+  } = useQuery({
     queryKey: key,
     queryFn: () => api.listCvComments(cvId),
   })
 
-  // Opening the dialog is reading them. Marked once the list has arrived, so
-  // a failed load does not clear the count for comments nobody saw.
-  const loaded = comments !== undefined
+  // Having the pane open is reading them. Marked each time a list arrives —
+  // not before, so a failed load does not clear the count for comments nobody
+  // saw, and again on a refetch, so ones that land while it is open do not
+  // come back as unread.
   useEffect(() => {
-    if (!loaded) return
+    if (!dataUpdatedAt) return
     api
       .markCommentsRead(cvId)
       .then((updated) => queryClient.setQueryData(['cv', cvId], updated))
       .catch(() => {})
-  }, [loaded, cvId, queryClient])
+  }, [dataUpdatedAt, cvId, queryClient])
 
   const remove = useMutation({
     mutationFn: (comment: CvComment) => api.deleteCvComment(cvId, comment.id),
@@ -139,57 +147,37 @@ export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void })
       ),
   })
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="scrim"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Comments"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="dialog-card comments-dialog">
-        <h2>Comments</h2>
-        <label className="comments-toggle">
-          <input
-            type="checkbox"
-            checked={cv.commentsEnabled}
-            disabled={toggle.isPending}
-            onChange={(e) => toggle.mutate(e.target.checked)}
-          />
-          <span>Allow comments</span>
-        </label>
-        {cv.commentsEnabled ? null : (
-          <p className="muted small">
-            Comments are off. People who open your link can’t leave new ones, but the ones below are kept.
-          </p>
-        )}
-        {isLoading ? (
-          <p className="muted">Loading…</p>
-        ) : (
-          <CommentList comments={comments ?? []} onDelete={(c) => remove.mutate(c)} />
-        )}
-        {remove.isError || toggle.isError ? (
-          <p className="auth-error" role="alert">
-            {((remove.error ?? toggle.error) as Error).message}
-          </p>
-        ) : null}
-        <div className="dialog-actions">
-          <button type="button" className="primary" onClick={onClose}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>,
-    window.document.body,
+  return (
+    <section className="section-editor comments-panel">
+      <header className="section-head">
+        <h2 className="section-title-static">Comments</h2>
+      </header>
+      <label className="comments-toggle">
+        <input
+          type="checkbox"
+          checked={cv.commentsEnabled}
+          disabled={toggle.isPending}
+          onChange={(e) => toggle.mutate(e.target.checked)}
+        />
+        <span>Allow comments</span>
+      </label>
+      <p className="muted small">
+        {!cv.published
+          ? 'Publish this CV to get a link people can comment on.'
+          : cv.commentsEnabled
+            ? 'Anyone with your link can leave a comment. Only you can see them.'
+            : 'Comments are off. People who open your link can’t leave new ones, but the ones below are kept.'}
+      </p>
+      {remove.isError || toggle.isError ? (
+        <p className="auth-error" role="alert">
+          {((remove.error ?? toggle.error) as Error).message}
+        </p>
+      ) : null}
+      {isLoading ? (
+        <p className="muted">Loading…</p>
+      ) : (
+        <CommentList comments={comments ?? []} onDelete={(c) => remove.mutate(c)} />
+      )}
+    </section>
   )
 }

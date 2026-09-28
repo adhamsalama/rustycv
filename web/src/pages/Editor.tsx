@@ -17,25 +17,32 @@ import { AppearanceToggle } from '../components/AppearanceToggle'
 import { DownloadPdf } from '../components/DownloadPdf'
 import { MoreMenu } from '../components/MoreMenu'
 import { ShareControl } from '../components/ShareControl'
+import { CommentsPanel } from '../components/Comments'
 import { SiteFooter } from '../components/SiteFooter'
 import { SortableList, SortableRow } from '../components/Sortable'
 import { GripIcon, Icon } from '../components/Icon'
 
-type Pane = { kind: 'details' } | { kind: 'design' } | { kind: 'section'; id: string }
+type Pane =
+  | { kind: 'details' }
+  | { kind: 'design' }
+  | { kind: 'comments' }
+  | { kind: 'section'; id: string }
 
 /**
  * Which pane is open, kept in the URL rather than in component state so a
  * refresh comes back to the section you were editing instead of to Details.
  *
- * One parameter carries all three cases: a section's id is a UUID, so it can
- * never collide with the two literals.
+ * One parameter carries every case: a section's id is a UUID, so it can never
+ * collide with the literals.
  */
 function usePane(): [Pane, (pane: Pane) => void] {
   const [params, setParams] = useSearchParams()
   const value = params.get('pane') ?? 'details'
 
   const pane: Pane =
-    value === 'details' || value === 'design' ? { kind: value } : { kind: 'section', id: value }
+    value === 'details' || value === 'design' || value === 'comments'
+      ? { kind: value }
+      : { kind: 'section', id: value }
 
   const setPane = useCallback(
     (next: Pane) => {
@@ -44,7 +51,7 @@ function usePane(): [Pane, (pane: Pane) => void] {
           const updated = new URLSearchParams(previous)
           // Details is the default, so it stays out of the URL entirely.
           if (next.kind === 'details') updated.delete('pane')
-          else updated.set('pane', next.kind === 'design' ? 'design' : next.id)
+          else updated.set('pane', next.kind === 'section' ? next.id : next.kind)
           return updated
         },
         // Replace rather than push: switching panes is not a navigation, and
@@ -245,11 +252,32 @@ export function Editor() {
               if (added) choose({ kind: 'section', id: added.id })
             }}
           />
+
+          {data ? (
+            <button
+              type="button"
+              className={
+                pane.kind === 'comments' ? 'outline-item outline-after active' : 'outline-item outline-after'
+              }
+              onClick={() => choose({ kind: 'comments' })}
+              aria-label={
+                data.unreadComments > 0 ? `Comments, ${data.unreadComments} unread` : 'Comments'
+              }
+            >
+              Comments
+              {data.unreadComments > 0 ? (
+                <span className="count-badge" aria-hidden="true">
+                  {data.unreadComments}
+                </span>
+              ) : null}
+            </button>
+          ) : null}
         </nav>
 
         <main className="pane">
           {pane.kind === 'details' ? <BasicsEditor /> : null}
           {pane.kind === 'design' ? <ThemePanel /> : null}
+          {pane.kind === 'comments' && data ? <CommentsPanel cv={data} /> : null}
           {activeSection ? <SectionEditor key={activeSection.id} section={activeSection} /> : null}
           {pane.kind === 'section' && !activeSection ? (
             <p className="muted">That section was deleted.</p>

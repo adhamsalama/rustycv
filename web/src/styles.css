@@ -358,7 +358,11 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .comment-form { display: flex; flex-direction: column; gap: 8px; }
 .count-badge { display: inline-block; min-width: 1.5em; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: var(--text-xs); font-weight: 600; line-height: 1.5; text-align: center; }
 .comments-toggle { display: flex; align-items: center; gap: 8px; }
-.comments-dialog { width: min(520px, 100%); max-height: 80vh; max-height: 80dvh; overflow-y: auto; }
+.comments-panel { display: flex; flex-direction: column; gap: 12px; }
+/* Set apart from the sections above it: it is about the CV, not in it. */
+.outline-after { margin-top: 18px; }
+/* On the active entry the badge would be accent on accent. */
+.outline-item.active .count-badge { background: var(--accent-ink); color: var(--accent); }
 
 /* Under the whole editor — the outline, the fields and the preview. The shell
    is exactly one viewport tall and this follows it, so the document scrolls by

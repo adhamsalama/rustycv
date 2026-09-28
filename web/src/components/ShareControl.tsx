@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import type { Cv } from '../types'
-import { CommentsDialog } from './Comments'
 
 /**
  * The publish button plus the link once it exists.
@@ -28,7 +27,6 @@ export function useShare(cv: Cv) {
 export function ShareControl({ cv }: { cv: Cv }) {
   const { publish, unpublish, pending } = useShare(cv)
   const [copied, setCopied] = useState(false)
-  const [showComments, setShowComments] = useState(false)
 
   const copyLink = async () => {
     if (!cv.publicId) return
@@ -52,22 +50,6 @@ export function ShareControl({ cv }: { cv: Cv }) {
           <button type="button" className="ghost" onClick={copyLink}>
             {copied ? 'Copied' : 'Copy link'}
           </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => setShowComments(true)}
-            aria-label={
-              cv.unreadComments > 0 ? `Comments, ${cv.unreadComments} unread` : 'Comments'
-            }
-          >
-            Comments
-            {cv.unreadComments > 0 ? (
-              <span className="count-badge" aria-hidden="true">
-                {cv.unreadComments}
-              </span>
-            ) : null}
-          </button>
-          {showComments ? <CommentsDialog cv={cv} onClose={() => setShowComments(false)} /> : null}
           <button
             type="button"
             className="ghost wide-only"
