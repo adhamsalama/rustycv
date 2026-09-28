@@ -74,16 +74,28 @@ function documentId(blob: Blob): number {
   return id
 }
 
-interface Rastered {
-  pages: ImageBitmap[]
+interface Layers {
   text: TextRun[][]
   links: LinkRect[][]
+  took: number
+}
+
+interface Rastered {
+  pages: ImageBitmap[]
+  /** Arrives after the pages: they can be shown while this is worked out. */
+  layers: Promise<Layers>
   timing: RasterTiming
 }
 
 const waiting = new Map<
   number,
   { resolve: (result: Rastered | 'stale') => void; reject: (error: Error) => void }
+>()
+
+/** Jobs whose pages have been delivered and whose layers have not. */
+const layersDue = new Map<
+  number,
+  { resolve: (layers: Layers) => void; reject: (error: Error) => void }
 >()
 
 function rasteriserWorker(): Worker {
@@ -93,6 +105,15 @@ function rasteriserWorker(): Worker {
 
   worker.onmessage = (event: MessageEvent<RasterMessage>) => {
     const message = event.data
+
+    const due = layersDue.get(message.id)
+    if (due) {
+      layersDue.delete(message.id)
+      if (message.kind === 'layers') due.resolve(message)
+      else if (message.kind === 'failed') due.reject(new Error(message.message))
+      return
+    }
+
     const pending = waiting.get(message.id)
     if (!pending) {
       // Nobody is listening any more — an edit landed while this was in
@@ -103,13 +124,14 @@ function rasteriserWorker(): Worker {
     }
     waiting.delete(message.id)
 
-    if (message.kind === 'rastered')
-      pending.resolve({
-        pages: message.pages,
-        text: message.text,
-        links: message.links,
-        timing: message.timing,
-      })
+    if (message.kind === 'rastered') {
+      const layers = new Promise<Layers>((resolve, reject) =>
+        layersDue.set(message.id, { resolve, reject }),
+      )
+      // Nobody may be waiting on these by the time they fail.
+      layers.catch(() => {})
+      pending.resolve({ pages: message.pages, layers, timing: message.timing })
+    } else if (message.kind === 'layers') return
     else if (message.kind === 'stale') pending.resolve('stale')
     else pending.reject(new Error(message.message))
   }
@@ -121,6 +143,8 @@ function rasteriserWorker(): Worker {
     workerHolds = null
     for (const pending of waiting.values()) pending.reject(new Error('The PDF worker stopped'))
     waiting.clear()
+    for (const due of layersDue.values()) due.reject(new Error('The PDF worker stopped'))
+    layersDue.clear()
   }
 
   rasteriser = worker
@@ -219,13 +243,8 @@ function linkLayer(links: LinkRect[]): HTMLDivElement {
   return layer
 }
 
-/** One page: the raster, and the text you can select on top of it. */
-function pageElement(
-  bitmap: ImageBitmap,
-  runs: TextRun[],
-  links: LinkRect[],
-  label: string,
-): HTMLDivElement {
+/** One page: the raster. The text and links are laid over it once they come. */
+function pageElement(bitmap: ImageBitmap, label: string): HTMLDivElement {
   const wrap = document.createElement('div')
   wrap.className = 'pdf-page'
 
@@ -233,7 +252,7 @@ function pageElement(
   canvas.className = 'pdf-raster'
   canvas.setAttribute('role', 'img')
   canvas.setAttribute('aria-label', label)
-  wrap.append(canvas, textLayer(runs), linkLayer(links))
+  wrap.append(canvas)
   return wrap
 }
 
@@ -359,7 +378,7 @@ export function PdfDocument({
         // Cap the ratio: a 3x display would quadruple the pixels for a
         // difference nobody can see on a page this size.
         const density = Math.min(window.devicePixelRatio || 1, 2)
-        const { pages, text, links, timing } = await rasterise(blob, width, density)
+        const { pages, layers, timing } = await rasterise(blob, width, density)
         if (cancelled) {
           for (const page of pages) page.close()
           return
@@ -367,12 +386,7 @@ export function PdfDocument({
 
         const adopted = performance.now()
         const canvases = pages.map((bitmap, index) =>
-          pageElement(
-            bitmap,
-            text[index] ?? [],
-            links[index] ?? [],
-            `${label}, page ${index + 1} of ${pages.length}`,
-          ),
+          pageElement(bitmap, `${label}, page ${index + 1} of ${pages.length}`),
         )
 
         report.current?.(canvases.length)
@@ -395,12 +409,27 @@ export function PdfDocument({
           console.debug(
             `[rustycv] preview ${Math.round(done - asked)}ms` +
               ` = parse ${Math.round(timing.open)} + raster ${Math.round(timing.raster)}` +
-              ` + text ${Math.round(timing.text)}` +
               ` + adopt ${Math.round(done - adopted)}` +
               `${timing.reused ? ' (document reused)' : ''}` +
               ` — ${canvases.length} page(s) at ${width}px`,
           )
         }
+
+        // A preview without selectable text is still a preview, so a failure
+        // here is not worth falling back to the iframe over.
+        layers.then(
+          ({ text, links, took }) => {
+            if (cancelled) return
+            canvases.forEach((page, index) =>
+              page.append(textLayer(text[index] ?? []), linkLayer(links[index] ?? [])),
+            )
+            if (profiling()) {
+              // eslint-disable-next-line no-console
+              console.debug(`[rustycv] text layer ${Math.round(took)}ms`)
+            }
+          },
+          () => {},
+        )
       } catch (error) {
         if (cancelled) return
         // A cancelled render task throws on the way out; that is not a failure.

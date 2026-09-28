@@ -82,8 +82,6 @@ export interface RasterTiming {
   open: number
   /** Painting every page. */
   raster: number
-  /** Pulling the text out of them, for the selectable layer. */
-  text: number
   reused: boolean
 }
 
@@ -92,11 +90,19 @@ export type RasterMessage =
       kind: 'rastered'
       id: number
       pages: ImageBitmap[]
-      /** One list per page, same order. */
-      text: TextRun[][]
-      /** One list per page, same order. */
-      links: LinkRect[][]
       timing: RasterTiming
+    }
+  /**
+   * The same job's text and links, sent after the pages so the picture is not
+   * held back by layers nobody can see. One list per page, same order.
+   */
+  | {
+      kind: 'layers'
+      id: number
+      text: TextRun[][]
+      links: LinkRect[][]
+      /** Extracting them; zero when the document already had them. */
+      took: number
     }
   /** The document asked for is not the one held. Send the bytes again. */
   | { kind: 'stale'; id: number }
@@ -376,6 +382,16 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     }
     const rastered = performance.now()
 
+    const timing: RasterTiming = {
+      open: bytes === null ? 0 : measure('pdf: parse', started, opened),
+      raster: measure('pdf: rasterise', opened, rastered),
+      reused: bytes === null,
+    }
+
+    // Transferred, not copied: an A4 page at 2x is about 5MB and there may be
+    // several of them.
+    self.postMessage({ kind: 'rastered', id, pages, timing } satisfies RasterMessage, pages)
+
     if (!held.layers) {
       const text: TextRun[][] = []
       const links: LinkRect[][] = []
@@ -389,16 +405,13 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     const { text, links } = held.layers
     const extracted = performance.now()
 
-    const timing: RasterTiming = {
-      open: bytes === null ? 0 : measure('pdf: parse', started, opened),
-      raster: measure('pdf: rasterise', opened, rastered),
-      text: measure('pdf: text', rastered, extracted),
-      reused: bytes === null,
-    }
-
-    // Transferred, not copied: an A4 page at 2x is about 5MB and there may be
-    // several of them.
-    self.postMessage({ kind: 'rastered', id, pages, text, links, timing } satisfies RasterMessage, pages)
+    self.postMessage({
+      kind: 'layers',
+      id,
+      text,
+      links,
+      took: measure('pdf: text', rastered, extracted),
+    } satisfies RasterMessage)
   } catch (error) {
     // A document that failed half-way through opening is not one to keep.
     open = null
