@@ -52,7 +52,7 @@ export function Share() {
       <main className="share-body">
         <div className="share-heading">
           <h1>{data?.fullName || data?.title}</h1>
-          <a className="primary" href={api.publicPdfUrl(publicId)}>
+          <a className="primary" href={api.publicPdfUrl(publicId)} download>
             Download PDF
           </a>
         </div>

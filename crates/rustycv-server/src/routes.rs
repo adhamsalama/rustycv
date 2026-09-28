@@ -193,7 +193,10 @@ async fn list_fonts() -> Json<Vec<&'static str>> {
 
 // -------------------------------------------------------------------- render
 
-fn pdf_response(bytes: Vec<u8>, filename: Option<&str>) -> Response {
+/// `attachment` saves the file; `inline` lets the browser show it, which the
+/// share page's `<embed>` needs — given `attachment`, Chrome downloads the
+/// embedded PDF instead of drawing it. The filename is honoured either way.
+fn pdf_response(bytes: Vec<u8>, filename: Option<&str>, disposition: &str) -> Response {
     let mut response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/pdf")
@@ -202,7 +205,7 @@ fn pdf_response(bytes: Vec<u8>, filename: Option<&str>) -> Response {
     if let Some(name) = filename {
         response = response.header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{name}\""),
+            format!("{disposition}; filename=\"{name}\""),
         );
     }
     response.body(Body::from(bytes)).unwrap()
@@ -215,7 +218,7 @@ async fn render_preview(
     Json(document): Json<CvDocument>,
 ) -> ApiResult<Response> {
     let pdf = state.renderer.pdf(document).await?;
-    Ok(pdf_response(pdf, None))
+    Ok(pdf_response(pdf, None, "inline"))
 }
 
 async fn download_pdf(
@@ -226,7 +229,7 @@ async fn download_pdf(
     let cv = db::get(&state.pool, user.id(), &id).await?;
     let filename = format!("{}.pdf", slug(&cv.document.basics.full_name, &cv.title));
     let pdf = state.renderer.pdf(cv.document).await?;
-    Ok(pdf_response(pdf, Some(&filename)))
+    Ok(pdf_response(pdf, Some(&filename), "attachment"))
 }
 
 /// A filename that survives a `Content-Disposition` header and a filesystem.
@@ -461,7 +464,7 @@ async fn download_published_pdf(
         }
     };
 
-    Ok(pdf_response(pdf, Some(&filename)))
+    Ok(pdf_response(pdf, Some(&filename), "inline"))
 }
 
 // ------------------------------------------------------------------ comments

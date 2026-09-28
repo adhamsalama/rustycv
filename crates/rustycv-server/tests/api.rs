@@ -1351,6 +1351,12 @@ async fn a_visitor_can_download_the_published_pdf_without_a_session() {
         .await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()[header::CONTENT_TYPE], "application/pdf");
+    // `inline`, or Chrome downloads the share page's <embed> instead of
+    // showing it. The page's download button asks for a save itself.
+    assert!(response.headers()[header::CONTENT_DISPOSITION]
+        .to_str()
+        .unwrap()
+        .starts_with("inline;"));
 }
 
 #[tokio::test]
