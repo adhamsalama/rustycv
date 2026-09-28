@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api, ApiError } from '../api'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { SiteFooter } from '../components/SiteFooter'
+import { PublicComments } from '../components/Comments'
 
 /**
  * What a share link opens to. Outside `AuthGate` in `main.tsx` on purpose —
@@ -61,6 +62,7 @@ export function Share() {
           type="application/pdf"
           title={data?.title}
         />
+        {data?.commentsEnabled ? <PublicComments publicId={publicId} /> : null}
         <footer className="share-foot">
           <SiteFooter />
         </footer>

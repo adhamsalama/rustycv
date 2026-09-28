@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod comments;
 pub mod db;
 pub mod error;
 pub mod jobs;
@@ -28,6 +29,8 @@ pub async fn build_app(database_url: &str, render_mode: RenderMode) -> anyhow::R
         limiter: ratelimit::RateLimiter::new(),
         public_ip_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_IP_MAX_REQUESTS),
         public_cv_limiter: ratelimit::RateLimiter::with_limit(ratelimit::PUBLIC_CV_MAX_REQUESTS),
+        comment_ip_limiter: ratelimit::RateLimiter::with_limit(ratelimit::COMMENT_IP_MAX_REQUESTS),
+        comment_cv_limiter: ratelimit::RateLimiter::with_limit(ratelimit::COMMENT_CV_MAX_REQUESTS),
         render_mode,
     };
     Ok(app_with_state(state))

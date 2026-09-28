@@ -58,6 +58,11 @@ pub struct AppState {
     /// public, or scraped from many IPs).
     pub public_ip_limiter: RateLimiter,
     pub public_cv_limiter: RateLimiter,
+    /// The same pair again for posting comments, with far smaller allowances
+    /// — kept apart so that reading a link never spends someone's comments,
+    /// nor commenting their reads.
+    pub comment_ip_limiter: RateLimiter,
+    pub comment_cv_limiter: RateLimiter,
     /// Served to the editor over `/api/config`. Fixed for the life of the
     /// process, which is why the editor may cache it and never re-read it.
     pub render_mode: RenderMode,

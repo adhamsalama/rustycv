@@ -512,6 +512,17 @@ builds (root `Cargo.toml`) — unoptimized it costs seconds per hash and would
 dominate the suite, and tuning the cost down for the tests' sake is the wrong
 fix.
 
+## Comments
+
+Anonymous visitors can comment on a share link (`comments.rs`), **only once the
+owner switches it on** — `comments_enabled` defaults to off, because a comment
+is shown to every later visitor. Off hides existing comments rather than
+deleting them. Posting has its own per-address (5/h) and per-CV (20/h) windows,
+separate from the share link's read windows so reading never spends posts; a
+CV holds at most 100, enforced inside the `INSERT` like the account caps (409).
+Only the owner deletes, scoped by `user_id` in the query. Bodies are plain
+text and rendered as a string, never markup.
+
 ## Limits
 
 `rustycv_core::limits` bounds a document: 5,000 characters per string,

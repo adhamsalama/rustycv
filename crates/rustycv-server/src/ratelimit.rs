@@ -28,6 +28,14 @@ pub const PUBLIC_IP_MAX_REQUESTS: u32 = 30;
 /// way that one address alone hammering a link is not.
 pub const PUBLIC_CV_MAX_REQUESTS: u32 = 120;
 
+/// Posting a comment on a share link is anonymous *and* writes a row that
+/// other visitors are shown, so it is braked far harder than reading one. Per
+/// address, a handful an hour is plenty for anyone with something to say.
+pub const COMMENT_IP_MAX_REQUESTS: u32 = 5;
+/// Per CV, across every address: what stops a spread-out flood filling a CV's
+/// 100 comments (`comments::MAX_COMMENTS`) in an afternoon.
+pub const COMMENT_CV_MAX_REQUESTS: u32 = 20;
+
 /// Sweep expired keys once the table passes this size. A sweep is O(n) and
 /// this bounds how often it runs; below it, the table is small enough that the
 /// memory does not matter.

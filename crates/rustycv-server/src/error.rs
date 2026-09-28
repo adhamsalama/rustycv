@@ -18,6 +18,10 @@ pub enum ApiError {
     /// 10 CVs" and "you have 10 applications" are different ceilings.
     #[error("{0}")]
     LimitReached(String),
+    /// Refused for a reason the caller cannot fix by retrying, such as posting
+    /// a comment on a CV whose owner has switched them off.
+    #[error("{0}")]
+    Forbidden(String),
     #[error("too many requests — try again in {retry_after}s")]
     RateLimited { retry_after: u64 },
     #[error("internal error")]
@@ -60,6 +64,7 @@ impl IntoResponse for ApiError {
             // account is simply already at the ceiling, and deleting something
             // makes the identical request succeed.
             ApiError::LimitReached(ref m) => (StatusCode::CONFLICT, m.clone(), vec![]),
+            ApiError::Forbidden(ref m) => (StatusCode::FORBIDDEN, m.clone(), vec![]),
             ApiError::RateLimited { .. } => {
                 (StatusCode::TOO_MANY_REQUESTS, self.to_string(), vec![])
             }

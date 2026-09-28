@@ -147,6 +147,8 @@ export interface Cv {
    * on. */
   publicId: string | null
   published: boolean
+  /** Whether visitors to the share link may leave comments. Off by default. */
+  commentsEnabled: boolean
 }
 
 // ---------------------------------------------------------- job tracker
@@ -228,4 +230,13 @@ export function setSectionItems(section: Section, items: BaseItem[]): void {
   } else {
     section.items = items
   }
+}
+
+/** A visitor's comment on a published CV. */
+export interface CvComment {
+  id: string
+  /** Empty when the visitor left no name. */
+  author: string
+  body: string
+  createdAt: string
 }

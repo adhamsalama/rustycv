@@ -4,6 +4,7 @@ import type {
   ApplicationInput,
   ApplicationStatus,
   Cv,
+  CvComment,
   CvDocument,
   CvSummary,
   Diagnostic,
@@ -87,7 +88,26 @@ export const api = {
 
   /** What a share link's page needs before it has its own PDF to show. */
   getPublishedCv: (publicId: string) =>
-    request<{ title: string; fullName: string }>(`/public/cvs/${publicId}`),
+    request<{ title: string; fullName: string; commentsEnabled: boolean }>(
+      `/public/cvs/${publicId}`,
+    ),
+
+  listPublishedComments: (publicId: string) =>
+    request<CvComment[]>(`/public/cvs/${publicId}/comments`),
+  postComment: (publicId: string, author: string, body: string) =>
+    request<CvComment>(`/public/cvs/${publicId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ author, body }),
+    }),
+  /** The owner's view: every comment on one of their CVs. */
+  listCvComments: (id: string) => request<CvComment[]>(`/cvs/${id}/comments`),
+  setCommentsEnabled: (id: string, enabled: boolean) =>
+    request<Cv>(`/cvs/${id}/comment-settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
+  deleteCvComment: (id: string, commentId: string) =>
+    request<void>(`/cvs/${id}/comments/${commentId}`, { method: 'DELETE' }),
 
   listApplications: () => request<Application[]>('/applications'),
   createApplication: (input: Partial<ApplicationInput>) =>

@@ -340,12 +340,24 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 }
 .more-panel > * { justify-content: flex-start; width: 100%; }
 
-.share-page { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
-.share-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+.share-page { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
+.share-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
 .share-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .share-heading h1 { font-size: var(--text-lg); margin: 0; }
-.share-embed { flex: 1; min-height: 0; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.share-embed { height: 85vh; height: 85dvh; flex-shrink: 0; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .share-foot { flex-shrink: 0; }
+
+/* Comments: under the PDF on a share link, and in the owner's dialog. */
+.share-comments { display: flex; flex-direction: column; gap: 12px; width: min(640px, 100%); }
+.share-comments h2 { font: 600 var(--text-lg)/1.2 var(--font-display); margin: 0; }
+.comment-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.comment { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.comment-meta { display: flex; align-items: baseline; gap: 8px; }
+.comment-meta button { margin-left: auto; }
+.comment-body { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-form { display: flex; flex-direction: column; gap: 8px; }
+.comments-toggle { display: flex; align-items: center; gap: 8px; }
+.comments-dialog { width: min(520px, 100%); max-height: 80vh; max-height: 80dvh; overflow-y: auto; }
 
 /* Under the whole editor — the outline, the fields and the preview. The shell
    is exactly one viewport tall and this follows it, so the document scrolls by

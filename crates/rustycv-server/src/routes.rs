@@ -8,6 +8,7 @@ use rustycv_core::CvDocument;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::{self, Credentials, User};
+use crate::comments;
 use crate::db;
 use crate::error::{ApiError, ApiResult};
 use crate::jobs::{self, Application, ApplicationInput, Status};
@@ -30,7 +31,11 @@ pub fn router() -> Router<AppState> {
         // see `check_public_rate_limit`, which each of these calls itself
         // since the limit is keyed on the CV in the path, not just the caller.
         .route("/public/cvs/{public_id}", get(get_published_cv))
-        .route("/public/cvs/{public_id}/pdf", get(download_published_pdf));
+        .route("/public/cvs/{public_id}/pdf", get(download_published_pdf))
+        .route(
+            "/public/cvs/{public_id}/comments",
+            get(list_published_comments).post(post_comment),
+        );
 
     let protected = Router::new()
         .route("/config", get(app_config))
@@ -44,6 +49,12 @@ pub fn router() -> Router<AppState> {
         .route("/cvs/{id}/export", get(export_cv))
         .route("/cvs/{id}/publish", post(publish_cv))
         .route("/cvs/{id}/unpublish", post(unpublish_cv))
+        .route("/cvs/{id}/comments", get(list_cv_comments))
+        .route("/cvs/{id}/comment-settings", put(set_comment_settings))
+        .route(
+            "/cvs/{id}/comments/{comment_id}",
+            axum::routing::delete(delete_cv_comment),
+        )
         .route(
             "/applications",
             get(list_applications).post(create_application),
@@ -364,17 +375,33 @@ async fn unpublish_cv(
 /// single address must not be able to hammer one link into the ground, and a
 /// single link must not be able to soak up load from many addresses at once.
 fn check_public_rate_limit(state: &AppState, addr: &str, public_id: &str) -> ApiResult<()> {
+    check_pair(
+        &state.public_ip_limiter,
+        &state.public_cv_limiter,
+        addr,
+        public_id,
+        "public cv rate limit reached",
+    )
+}
+
+fn check_pair(
+    ip_limiter: &crate::ratelimit::RateLimiter,
+    cv_limiter: &crate::ratelimit::RateLimiter,
+    addr: &str,
+    public_id: &str,
+    what: &str,
+) -> ApiResult<()> {
     let ip_key = format!("ip:{addr}");
-    if let Err(allowance) = state.public_ip_limiter.check(&ip_key) {
-        tracing::warn!(key = %ip_key, "public cv rate limit reached");
+    if let Err(allowance) = ip_limiter.check(&ip_key) {
+        tracing::warn!(key = %ip_key, "{what}");
         return Err(ApiError::RateLimited {
             retry_after: allowance.reset_in,
         });
     }
 
     let cv_key = format!("cv:{public_id}");
-    if let Err(allowance) = state.public_cv_limiter.check(&cv_key) {
-        tracing::warn!(key = %cv_key, "public cv rate limit reached");
+    if let Err(allowance) = cv_limiter.check(&cv_key) {
+        tracing::warn!(key = %cv_key, "{what}");
         return Err(ApiError::RateLimited {
             retry_after: allowance.reset_in,
         });
@@ -391,6 +418,7 @@ fn check_public_rate_limit(state: &AppState, addr: &str, public_id: &str) -> Api
 struct PublishedCvInfo {
     title: String,
     full_name: String,
+    comments_enabled: bool,
 }
 
 async fn get_published_cv(
@@ -403,6 +431,7 @@ async fn get_published_cv(
     Ok(Json(PublishedCvInfo {
         title: cv.title,
         full_name: cv.document.basics.full_name,
+        comments_enabled: cv.comments_enabled,
     }))
 }
 
@@ -435,6 +464,75 @@ async fn download_published_pdf(
     };
 
     Ok(pdf_response(pdf, Some(&filename)))
+}
+
+// ------------------------------------------------------------------ comments
+
+/// Reading is one indexed query over at most `MAX_COMMENTS` rows, so it sits
+/// behind the general per-caller limit only; spending the share link's render
+/// allowance on it would cost a visitor PDF loads for reading text.
+async fn list_published_comments(
+    State(state): State<AppState>,
+    Path(public_id): Path<String>,
+) -> ApiResult<Json<Vec<comments::Comment>>> {
+    Ok(Json(
+        comments::list_published(&state.pool, &public_id).await?,
+    ))
+}
+
+/// Anonymous, and shown to every later visitor — so it has its own windows,
+/// per address and per CV, far tighter than reading's, on top of the cap on
+/// how many one CV can hold at all.
+async fn post_comment(
+    State(state): State<AppState>,
+    PeerAddr(addr): PeerAddr,
+    Path(public_id): Path<String>,
+    Json(input): Json<comments::CommentInput>,
+) -> ApiResult<(StatusCode, Json<comments::Comment>)> {
+    check_pair(
+        &state.comment_ip_limiter,
+        &state.comment_cv_limiter,
+        &addr,
+        &public_id,
+        "comment rate limit reached",
+    )?;
+    let comment = comments::create(&state.pool, &public_id, input).await?;
+    Ok((StatusCode::CREATED, Json(comment)))
+}
+
+async fn list_cv_comments(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<comments::Comment>>> {
+    Ok(Json(
+        comments::list_owned(&state.pool, user.id(), &id).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct CommentSettings {
+    enabled: bool,
+}
+
+async fn set_comment_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+    Json(settings): Json<CommentSettings>,
+) -> ApiResult<Json<db::Cv>> {
+    Ok(Json(
+        db::set_comments_enabled(&state.pool, user.id(), &id, settings.enabled).await?,
+    ))
+}
+
+async fn delete_cv_comment(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path((id, comment_id)): Path<(String, String)>,
+) -> ApiResult<StatusCode> {
+    comments::delete(&state.pool, user.id(), &id, &comment_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // ------------------------------------------------------------- import/export

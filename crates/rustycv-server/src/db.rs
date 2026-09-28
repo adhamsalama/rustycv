@@ -63,6 +63,8 @@ pub struct Cv {
     /// unpublished so republishing hands back the same link.
     pub public_id: Option<String>,
     pub published: bool,
+    /// Whether visitors to the share link may leave comments.
+    pub comments_enabled: bool,
 }
 
 fn now() -> String {
@@ -110,7 +112,8 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
 /// all is not this account's business.
 pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
     let row = sqlx::query(
-        "SELECT id, title, data, created_at, updated_at, public_id, published
+        "SELECT id, title, data, created_at, updated_at, public_id, published,
+                comments_enabled
          FROM cvs WHERE id = ? AND user_id = ?",
     )
     .bind(id)
@@ -128,7 +131,29 @@ pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
         document: serde_json::from_str(&data)?,
         public_id: row.get("public_id"),
         published: row.get("published"),
+        comments_enabled: row.get("comments_enabled"),
     })
+}
+
+/// Turn comments on the share link on or off. Existing comments are kept
+/// either way; switching off only hides them and stops new ones.
+pub async fn set_comments_enabled(
+    pool: &SqlitePool,
+    user_id: &str,
+    id: &str,
+    enabled: bool,
+) -> ApiResult<Cv> {
+    let affected = sqlx::query("UPDATE cvs SET comments_enabled = ? WHERE id = ? AND user_id = ?")
+        .bind(enabled)
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    if affected == 0 {
+        return Err(ApiError::NotFound);
+    }
+    get(pool, user_id, id).await
 }
 
 pub async fn create(
@@ -273,6 +298,7 @@ pub struct PublishedCv {
     pub updated_at: String,
     pub cached_pdf: Option<Vec<u8>>,
     pub cached_for: Option<String>,
+    pub comments_enabled: bool,
 }
 
 /// Somebody following a share link. `NotFound` unless the CV both exists and
@@ -280,7 +306,8 @@ pub struct PublishedCv {
 /// never existed, which is the point of the switch.
 pub async fn get_published(pool: &SqlitePool, public_id: &str) -> ApiResult<PublishedCv> {
     let row = sqlx::query(
-        "SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for
+        "SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for,
+                comments_enabled
          FROM cvs WHERE public_id = ? AND published = 1",
     )
     .bind(public_id)
@@ -296,6 +323,7 @@ pub async fn get_published(pool: &SqlitePool, public_id: &str) -> ApiResult<Publ
         updated_at: row.get("updated_at"),
         cached_pdf: row.get("public_pdf"),
         cached_for: row.get("public_pdf_cached_for"),
+        comments_enabled: row.get("comments_enabled"),
     })
 }
 

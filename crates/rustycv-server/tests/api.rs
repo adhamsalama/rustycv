@@ -893,6 +893,8 @@ async fn signed_out_limited_to(limit: u32) -> TestApp {
         limiter: rustycv_server::ratelimit::RateLimiter::with_limit(limit),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        comment_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        comment_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         render_mode: rustycv_server::state::RenderMode::default(),
     });
 
@@ -1052,6 +1054,8 @@ async fn the_first_account_adopts_cvs_that_predate_accounts() {
         limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        comment_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        comment_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         render_mode: rustycv_server::state::RenderMode::default(),
     });
     let mut app = TestApp {
@@ -1490,6 +1494,8 @@ async fn app_with_public_limits(ip_limit: u32, cv_limit: u32) -> TestApp {
         limiter: rustycv_server::ratelimit::RateLimiter::new(),
         public_ip_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(ip_limit),
         public_cv_limiter: rustycv_server::ratelimit::RateLimiter::with_limit(cv_limit),
+        comment_ip_limiter: rustycv_server::ratelimit::RateLimiter::new(),
+        comment_cv_limiter: rustycv_server::ratelimit::RateLimiter::new(),
         render_mode: rustycv_server::state::RenderMode::default(),
     });
     let mut app = TestApp {
@@ -1624,4 +1630,310 @@ async fn an_oversized_cv_is_neither_stored_nor_rendered() {
 
     let (status, _) = app.json("POST", "/api/render", document).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ---------------------------------------------------------------- comments
+
+/// Switch comments on or off for one of the signed-in account's CVs.
+async fn set_comments(app: &TestApp, id: &str, enabled: bool) -> Value {
+    let (status, cv) = app
+        .json(
+            "PUT",
+            &format!("/api/cvs/{id}/comment-settings"),
+            json!({"enabled": enabled}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    cv
+}
+
+/// A CV, published with comments switched on, and the link token it answers on.
+async fn published_cv(app: &TestApp) -> (String, String) {
+    let id = create_cv(app).await;
+    let (status, published) = app
+        .json("POST", &format!("/api/cvs/{id}/publish"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(published["commentsEnabled"], false, "comments start off");
+    assert_eq!(set_comments(app, &id, true).await["commentsEnabled"], true);
+    (id, published["publicId"].as_str().unwrap().to_string())
+}
+
+#[tokio::test]
+async fn switching_comments_off_refuses_new_ones_and_hides_the_rest() {
+    let app = TestApp::new().await;
+    let (id, public_id) = published_cv(&app).await;
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "hello").await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    set_comments(&app, &id, false).await;
+    let (status, _) = comment_from(&app, "10.0.0.2", &public_id, "again").await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (_, info) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(info["commentsEnabled"], false);
+    let (_, listed) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert!(listed.as_array().unwrap().is_empty(), "hidden while off");
+
+    set_comments(&app, &id, true).await;
+    let (_, listed) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(
+        listed.as_array().unwrap().len(),
+        1,
+        "and back when on again"
+    );
+
+    let other = app.register("someone-else@example.com").await;
+    let (status, _) = app
+        .json_as(
+            Some(&other),
+            "PUT",
+            &format!("/api/cvs/{id}/comment-settings"),
+            json!({"enabled": false}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Post a comment anonymously, as if from `ip`.
+async fn comment_from(app: &TestApp, ip: &str, public_id: &str, body: &str) -> (StatusCode, Value) {
+    let mut request = Request::builder()
+        .method("POST")
+        .uri(format!("/api/public/cvs/{public_id}/comments"))
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({"author": "A visitor", "body": body}).to_string(),
+        ))
+        .unwrap();
+    let addr: std::net::SocketAddr = format!("{ip}:4000").parse().unwrap();
+    request
+        .extensions_mut()
+        .insert(axum::extract::ConnectInfo(addr));
+    let (status, bytes) = app.send_as(None, request).await;
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// An app whose comment windows are wide open, for the tests about the cap.
+async fn app_with_comment_limits(ip: u32, cv: u32) -> TestApp {
+    use rustycv_server::ratelimit::RateLimiter;
+    let path = std::env::temp_dir().join(format!("rustycv-test-{}.db", uuid::Uuid::new_v4()));
+    let pool = rustycv_server::db::connect(&format!("sqlite://{}", path.display()))
+        .await
+        .expect("database opens");
+    let router = rustycv_server::app_with_state(rustycv_server::state::AppState {
+        pool,
+        renderer: rustycv_server::render::Renderer::new(),
+        limiter: RateLimiter::new(),
+        public_ip_limiter: RateLimiter::new(),
+        public_cv_limiter: RateLimiter::new(),
+        comment_ip_limiter: RateLimiter::with_limit(ip),
+        comment_cv_limiter: RateLimiter::with_limit(cv),
+        render_mode: rustycv_server::state::RenderMode::default(),
+    });
+    let mut app = TestApp {
+        router,
+        path,
+        session: None,
+    };
+    app.session = Some(app.register("owner@example.com").await);
+    app
+}
+
+#[tokio::test]
+async fn a_visitor_comments_and_only_the_owner_can_remove_it() {
+    let app = TestApp::new().await;
+    let (id, public_id) = published_cv(&app).await;
+
+    let (status, comment) = comment_from(&app, "10.0.0.1", &public_id, "  Strong CV.  ").await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(comment["body"], "Strong CV.");
+    let comment_id = comment["id"].as_str().unwrap().to_string();
+
+    let (status, listed) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+
+    let (status, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(owned[0]["id"], comment_id.as_str());
+
+    let uri = format!("/api/cvs/{id}/comments/{comment_id}");
+    let (status, _) = app.json_as(None, "DELETE", &uri, json!({})).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let other = app.register("someone-else@example.com").await;
+    let (status, _) = app.json_as(Some(&other), "DELETE", &uri, json!({})).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "someone else's CV is a 404");
+    let (status, _) = app
+        .json_as(
+            Some(&other),
+            "GET",
+            &format!("/api/cvs/{id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, _) = app.json("DELETE", &uri, json!({})).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, listed) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert!(listed.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn an_unpublished_cv_takes_no_comments_and_shows_none() {
+    let app = TestApp::new().await;
+    let (id, public_id) = published_cv(&app).await;
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "hello").await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    app.json("POST", &format!("/api/cvs/{id}/unpublish"), json!({}))
+        .await;
+
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "again").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = app
+        .json_as(
+            None,
+            "GET",
+            &format!("/api/public/cvs/{public_id}/comments"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = comment_from(&app, "10.0.0.1", "does-not-exist", "hi").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // The owner still sees what was left while it was up.
+    let (_, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
+        .await;
+    assert_eq!(owned.as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn a_blank_or_oversized_comment_is_refused() {
+    let app = TestApp::new().await;
+    let (_, public_id) = published_cv(&app).await;
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "   ").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let long = "a".repeat(rustycv_server::comments::MAX_BODY + 1);
+    let (status, _) = comment_from(&app, "10.0.0.2", &public_id, &long).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn one_address_is_throttled_per_hour() {
+    use rustycv_server::ratelimit::COMMENT_IP_MAX_REQUESTS;
+    let app = TestApp::new().await;
+    let (_, public_id) = published_cv(&app).await;
+
+    for n in 0..COMMENT_IP_MAX_REQUESTS {
+        let (status, _) = comment_from(&app, "10.0.0.1", &public_id, &format!("#{n}")).await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "comment {n} is within the limit"
+        );
+    }
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "one more").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+
+    let (status, _) = comment_from(&app, "10.0.0.2", &public_id, "a different address").await;
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "one address's flood is its own"
+    );
+}
+
+#[tokio::test]
+async fn one_cv_is_throttled_across_every_address() {
+    use rustycv_server::ratelimit::COMMENT_CV_MAX_REQUESTS;
+    let app = TestApp::new().await;
+    let (_, public_id) = published_cv(&app).await;
+    let (_, another) = published_cv(&app).await;
+
+    for n in 0..COMMENT_CV_MAX_REQUESTS {
+        let (status, _) = comment_from(&app, &format!("10.0.1.{n}"), &public_id, "hi").await;
+        assert_eq!(
+            status,
+            StatusCode::CREATED,
+            "comment {n} is within the limit"
+        );
+    }
+    let (status, _) = comment_from(&app, "10.0.2.1", &public_id, "hi").await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
+
+    let (status, _) = comment_from(&app, "10.0.2.1", &another, "hi").await;
+    assert_eq!(status, StatusCode::CREATED, "another CV has its own window");
+}
+
+#[tokio::test]
+async fn a_cv_stops_at_a_hundred_comments_until_the_owner_deletes_one() {
+    use rustycv_server::comments::MAX_COMMENTS;
+    let app = app_with_comment_limits(1000, 1000).await;
+    let (id, public_id) = published_cv(&app).await;
+
+    for n in 0..MAX_COMMENTS {
+        let (status, _) = comment_from(&app, "10.0.0.1", &public_id, &format!("#{n}")).await;
+        assert_eq!(status, StatusCode::CREATED, "comment {n} fits");
+    }
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "full").await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    let (_, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
+        .await;
+    assert_eq!(owned.as_array().unwrap().len(), MAX_COMMENTS);
+    let first = owned[0]["id"].as_str().unwrap();
+    let (status, _) = app
+        .json(
+            "DELETE",
+            &format!("/api/cvs/{id}/comments/{first}"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "room again").await;
+    assert_eq!(status, StatusCode::CREATED);
 }
