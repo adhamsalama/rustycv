@@ -39,6 +39,13 @@ pub enum RenderError {
     /// swallowed, so a broken preview says *why* it is broken.
     #[error("typst failed to compile the document ({} diagnostics)", .0.len())]
     Typst(Vec<Diagnostic>),
+    /// The document is bigger than [`rustycv_core::limits`] allows. Checked
+    /// here, inside the one render path, so the browser build refuses exactly
+    /// what the server does.
+    #[error("{0}")]
+    TooLarge(#[from] rustycv_core::LimitError),
+    #[error("the CV runs to {0} pages; the most allowed is {max}", max = rustycv_core::limits::MAX_PAGES)]
+    TooManyPages(usize),
 }
 
 /// What a client is told when a render fails.
@@ -95,6 +102,7 @@ fn compile(doc: &CvDocument) -> Result<(CvWorld, PagedDocument), RenderError> {
 
     // Hand the template a document whose theme is already clamped, so a hostile
     // or fat-fingered value can't turn into a pathological layout.
+    doc.check_limits()?;
     let mut doc = doc.clone();
     doc.theme = doc.theme.sanitized();
     let data_json = serde_json::to_string(&doc)?;
@@ -120,6 +128,9 @@ fn compile(doc: &CvDocument) -> Result<(CvWorld, PagedDocument), RenderError> {
     }
 
     match compiled.output {
+        Ok(document) if document.pages().len() > rustycv_core::limits::MAX_PAGES => {
+            Err(RenderError::TooManyPages(document.pages().len()))
+        }
         Ok(document) => Ok((world, document)),
         Err(errors) => {
             let diagnostics = to_diagnostics(&world, &errors);

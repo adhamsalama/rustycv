@@ -117,6 +117,24 @@ pub struct ApplicationInput {
 }
 
 impl ApplicationInput {
+    /// Notes get room for a pasted job ad; the rest are one line each.
+    fn check_limits(&self) -> ApiResult<()> {
+        for (name, value, max) in [
+            ("company", &self.company, 200),
+            ("role", &self.role, 200),
+            ("url", &self.url, 2_000),
+            ("notes", &self.notes, 20_000),
+        ] {
+            let chars = value.chars().count();
+            if chars > max {
+                return Err(ApiError::BadRequest(format!(
+                    "{name} is {chars} characters long; the most allowed is {max}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn status(&self) -> ApiResult<Status> {
         match self.status.as_deref() {
             None => Ok(Status::default()),
@@ -211,6 +229,7 @@ pub async fn create(
 ) -> ApiResult<Application> {
     let id = Uuid::new_v4().to_string();
     let ts = now();
+    input.check_limits()?;
     let status = input.status()?;
     let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 
@@ -261,6 +280,7 @@ pub async fn update(
     input: ApplicationInput,
 ) -> ApiResult<Application> {
     let current = get(pool, user_id, id).await?;
+    input.check_limits()?;
     let status = input.status()?;
     let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 

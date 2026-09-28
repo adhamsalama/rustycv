@@ -9,11 +9,13 @@
 
 mod date;
 mod defaults;
+pub mod limits;
 mod rich;
 mod section;
 mod theme;
 
 pub use date::DateSpec;
+pub use limits::LimitError;
 pub use rich::{Block, BlockKind, RichText, Run};
 pub use section::{
     CertificationItem, CustomItem, EducationItem, EntryOrder, ExperienceItem, InterestItem,
@@ -58,6 +60,13 @@ impl Default for CvDocument {
 }
 
 impl CvDocument {
+    /// Check the document against [`limits`], so a hostile one is refused
+    /// before it is stored or laid out.
+    pub fn check_limits(&self) -> Result<(), LimitError> {
+        let value = serde_json::to_value(self).expect("a CvDocument always serializes");
+        limits::check(&value)
+    }
+
     /// A new CV with one of each core section, filled with placeholder
     /// content so a first-time user sees what a finished CV looks like
     /// instead of a blank page, and edits the sample rather than starting

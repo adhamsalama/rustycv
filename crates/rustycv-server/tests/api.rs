@@ -1593,3 +1593,35 @@ async fn one_address_hammering_a_share_link_is_refused() {
         .await;
     assert_eq!(status, StatusCode::TOO_MANY_REQUESTS);
 }
+
+#[tokio::test]
+async fn an_oversized_cv_is_neither_stored_nor_rendered() {
+    let app = TestApp::new().await;
+    let (_, created) = app.json("POST", "/api/cvs", json!({})).await;
+    let id = created["id"].as_str().unwrap();
+
+    let mut document: CvDocument = serde_json::from_str(FIXTURE).unwrap();
+    document.basics.headline = "a".repeat(rustycv_core::limits::MAX_STRING_CHARS + 1);
+    let document = serde_json::to_value(&document).unwrap();
+
+    let (status, _) = app
+        .json(
+            "PUT",
+            &format!("/api/cvs/{id}"),
+            json!({ "document": document }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) = app
+        .json(
+            "PUT",
+            &format!("/api/cvs/{id}"),
+            json!({ "title": "t".repeat(201), "document": {} }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, _) = app.json("POST", "/api/render", document).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}

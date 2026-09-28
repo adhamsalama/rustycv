@@ -1363,3 +1363,36 @@ fn every_template_renders_paragraphs_and_both_kinds_of_list() {
         );
     }
 }
+
+#[test]
+fn a_cv_past_the_page_limit_is_refused() {
+    // Every field inside the text limits, but enough entries to overflow them
+    // in pages: the page count is checked after layout, not guessed from size.
+    let bullet = "Shipped a thing that mattered to a great many people. ".repeat(10);
+    let items: Vec<_> = (0..150)
+        .map(|i| json!({ "role": format!("Role {i}"), "company": "Co", "bullets": [bullet] }))
+        .collect();
+    let doc: CvDocument = serde_json::from_value(json!({
+        "template": "classic",
+        "sections": [{ "title": "Experience", "kind": "experience", "items": items }],
+    }))
+    .unwrap();
+    doc.check_limits()
+        .expect("the document itself is within the text limits");
+    match render_pdf(&doc) {
+        Err(rustycv_render::RenderError::TooManyPages(n)) => {
+            assert!(n > rustycv_core::limits::MAX_PAGES)
+        }
+        other => panic!("expected TooManyPages, got {:?}", other.map(|b| b.len())),
+    }
+}
+
+#[test]
+fn an_oversized_field_is_refused_before_layout() {
+    let mut doc = fixture();
+    doc.basics.full_name = "a".repeat(rustycv_core::limits::MAX_STRING_CHARS + 1);
+    assert!(matches!(
+        render_pdf(&doc),
+        Err(rustycv_render::RenderError::TooLarge(_))
+    ));
+}

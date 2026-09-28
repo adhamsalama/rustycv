@@ -292,6 +292,7 @@ async fn create_cv(
         ),
     };
 
+    crate::error::check_cv(Some(&title), &document)?;
     let cv = db::create(&state.pool, user.id(), &title, &document).await?;
     Ok((StatusCode::CREATED, Json(cv)))
 }
@@ -317,6 +318,7 @@ async fn update_cv(
     Path(id): Path<String>,
     Json(body): Json<UpdateBody>,
 ) -> ApiResult<Json<db::Cv>> {
+    crate::error::check_cv(body.title.as_deref(), &body.document)?;
     let cv = db::update(
         &state.pool,
         user.id(),
@@ -494,6 +496,7 @@ async fn import_cv(
         })
         .unwrap_or_else(|| "Imported CV".to_string());
 
+    crate::error::check_cv(Some(&title), &document)?;
     let cv = db::create(&state.pool, user.id(), &title, &document).await?;
     Ok((StatusCode::CREATED, Json(cv)))
 }

@@ -78,6 +78,10 @@ impl IntoResponse for ApiError {
                 "the template failed to compile".to_string(),
                 diagnostics,
             ),
+            // Like a compile failure, an oversized CV is the document's fault.
+            ApiError::Render(ref e @ (RenderError::TooLarge(_) | RenderError::TooManyPages(_))) => {
+                (StatusCode::UNPROCESSABLE_ENTITY, e.to_string(), vec![])
+            }
             ApiError::Render(ref e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), vec![]),
             ApiError::Db(ref e) => {
                 tracing::error!(error = %e, "database error");
@@ -106,6 +110,21 @@ impl IntoResponse for ApiError {
 
         response
     }
+}
+
+impl From<rustycv_core::LimitError> for ApiError {
+    fn from(error: rustycv_core::LimitError) -> Self {
+        ApiError::BadRequest(error.to_string())
+    }
+}
+
+/// Refuse a title or document over the limits before it is stored.
+pub fn check_cv(title: Option<&str>, document: &rustycv_core::CvDocument) -> ApiResult<()> {
+    if let Some(title) = title {
+        rustycv_core::limits::check_title(title).map_err(ApiError::BadRequest)?;
+    }
+    document.check_limits()?;
+    Ok(())
 }
 
 pub type ApiResult<T> = Result<T, ApiError>;

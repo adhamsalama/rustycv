@@ -50,7 +50,7 @@ cargo run -p rustycv-server         # API + built UI on :8080
 pnpm -C web dev                     # UI on :5173 (use localhost, Vite binds ::1)
 cargo run -p rustycv-server --bin seed
 
-cargo test --workspace              # 128 tests
+cargo test --workspace              # 134 tests
 pnpm -C web test                    # 64, the rich-text conversions and the render fallback
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --check
@@ -511,6 +511,18 @@ build one it can reach the end of. Argon2 is pinned to `opt-level = 3` in dev
 builds (root `Cargo.toml`) — unoptimized it costs seconds per hash and would
 dominate the suite, and tuning the cost down for the tests' sake is the wrong
 fix.
+
+## Limits
+
+`rustycv_core::limits` bounds a document: 5,000 characters per string,
+100,000 in all, 200 items per list, and 10 rendered pages. The text limits
+walk the *serialized* document, so a new field is covered without being
+listed. They are checked inside `compile`, the one render path, so the wasm
+build refuses exactly what the server does, and again before a CV is stored
+(400). A render over them is a 422 like a compile failure, because it is the
+document's fault. Pages can only be counted after layout, so the text limits
+are what keep that layout cheap. Titles cap at 200 and application fields
+have their own caps in `jobs.rs`.
 
 ## Scope
 
