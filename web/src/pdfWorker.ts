@@ -64,6 +64,18 @@ export interface TextRun {
   rtl: boolean
 }
 
+/**
+ * A link annotation, as a rectangle in fractions of the page. The raster has
+ * the underline but nothing to click, so these are laid over it as anchors.
+ */
+export interface LinkRect {
+  url: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 /** How long each half took, for the profiling the editor can switch on. */
 export interface RasterTiming {
   /** Parsing. Zero when the document was already open. */
@@ -82,6 +94,8 @@ export type RasterMessage =
       pages: ImageBitmap[]
       /** One list per page, same order. */
       text: TextRun[][]
+      /** One list per page, same order. */
+      links: LinkRect[][]
       timing: RasterTiming
     }
   /** The document asked for is not the one held. Send the bytes again. */
@@ -269,6 +283,28 @@ async function textRuns(
   return runs
 }
 
+/** Only external URIs: a CV has no internal destinations worth following. */
+async function linkRects(
+  page: pdfjs.PDFPageProxy,
+  viewport: pdfjs.PageViewport,
+): Promise<LinkRect[]> {
+  const { pageWidth, pageHeight, pageX, pageY } = viewport.rawDims as RawDims
+  const links: LinkRect[] = []
+  for (const note of await page.getAnnotations()) {
+    if (note.subtype !== 'Link' || typeof note.url !== 'string') continue
+    if (!/^(https?:|mailto:|tel:)/i.test(note.url)) continue
+    const [x1, y1, x2, y2] = note.rect as [number, number, number, number]
+    links.push({
+      url: note.url,
+      left: (Math.min(x1, x2) - pageX) / pageWidth,
+      top: (pageY + pageHeight - Math.max(y1, y2)) / pageHeight,
+      width: Math.abs(x2 - x1) / pageWidth,
+      height: Math.abs(y2 - y1) / pageHeight,
+    })
+  }
+  return links
+}
+
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -314,6 +350,7 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
 
     const pages: ImageBitmap[] = []
     const text: TextRun[][] = []
+    const links: LinkRect[][] = []
     for (let number = 1; number <= held.proxy.numPages; number += 1) {
       const page = await held.proxy.getPage(number)
       const unscaled = page.getViewport({ scale: 1 })
@@ -334,7 +371,9 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
 
     for (let number = 1; number <= held.proxy.numPages; number += 1) {
       const page = await held.proxy.getPage(number)
-      text.push(await textRuns(page, page.getViewport({ scale: 1 })))
+      const unscaled = page.getViewport({ scale: 1 })
+      text.push(await textRuns(page, unscaled))
+      links.push(await linkRects(page, unscaled))
     }
     const extracted = performance.now()
 
@@ -347,7 +386,7 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
 
     // Transferred, not copied: an A4 page at 2x is about 5MB and there may be
     // several of them.
-    self.postMessage({ kind: 'rastered', id, pages, text, timing } satisfies RasterMessage, pages)
+    self.postMessage({ kind: 'rastered', id, pages, text, links, timing } satisfies RasterMessage, pages)
   } catch (error) {
     // A document that failed half-way through opening is not one to keep.
     open = null

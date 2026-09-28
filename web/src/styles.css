@@ -622,6 +622,8 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
   transform-origin: 0 0;
   transform: rotate(var(--angle, 0deg)) scaleX(var(--scale-x, 1));
 }
+.pdf-links { position: absolute; inset: 0; pointer-events: none; }
+.pdf-links a { position: absolute; pointer-events: auto; cursor: pointer; }
 .pdf-text ::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* Sits over the page rather than beside it: the one number people keep

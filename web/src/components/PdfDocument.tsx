@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDebounced } from '../hooks/useDebounced'
-import type { RasterMessage, RasterRequest, RasterTiming, TextRun } from '../pdfWorker'
+import type { LinkRect, RasterMessage, RasterRequest, RasterTiming, TextRun } from '../pdfWorker'
 
 /**
  * The rendered CV, drawn page by page onto canvases.
@@ -77,6 +77,7 @@ function documentId(blob: Blob): number {
 interface Rastered {
   pages: ImageBitmap[]
   text: TextRun[][]
+  links: LinkRect[][]
   timing: RasterTiming
 }
 
@@ -103,7 +104,12 @@ function rasteriserWorker(): Worker {
     waiting.delete(message.id)
 
     if (message.kind === 'rastered')
-      pending.resolve({ pages: message.pages, text: message.text, timing: message.timing })
+      pending.resolve({
+        pages: message.pages,
+        text: message.text,
+        links: message.links,
+        timing: message.timing,
+      })
     else if (message.kind === 'stale') pending.resolve('stale')
     else pending.reject(new Error(message.message))
   }
@@ -194,8 +200,32 @@ function textLayer(runs: TextRun[]): HTMLDivElement {
   return layer
 }
 
+/** The page's links, over the text so a click lands on them. */
+function linkLayer(links: LinkRect[]): HTMLDivElement {
+  const layer = document.createElement('div')
+  layer.className = 'pdf-links'
+  for (const link of links) {
+    const a = document.createElement('a')
+    a.href = link.url
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    a.title = link.url
+    a.style.left = `${(link.left * 100).toFixed(3)}%`
+    a.style.top = `${(link.top * 100).toFixed(3)}%`
+    a.style.width = `${(link.width * 100).toFixed(3)}%`
+    a.style.height = `${(link.height * 100).toFixed(3)}%`
+    layer.append(a)
+  }
+  return layer
+}
+
 /** One page: the raster, and the text you can select on top of it. */
-function pageElement(bitmap: ImageBitmap, runs: TextRun[], label: string): HTMLDivElement {
+function pageElement(
+  bitmap: ImageBitmap,
+  runs: TextRun[],
+  links: LinkRect[],
+  label: string,
+): HTMLDivElement {
   const wrap = document.createElement('div')
   wrap.className = 'pdf-page'
 
@@ -203,7 +233,7 @@ function pageElement(bitmap: ImageBitmap, runs: TextRun[], label: string): HTMLD
   canvas.className = 'pdf-raster'
   canvas.setAttribute('role', 'img')
   canvas.setAttribute('aria-label', label)
-  wrap.append(canvas, textLayer(runs))
+  wrap.append(canvas, textLayer(runs), linkLayer(links))
   return wrap
 }
 
@@ -329,7 +359,7 @@ export function PdfDocument({
         // Cap the ratio: a 3x display would quadruple the pixels for a
         // difference nobody can see on a page this size.
         const density = Math.min(window.devicePixelRatio || 1, 2)
-        const { pages, text, timing } = await rasterise(blob, width, density)
+        const { pages, text, links, timing } = await rasterise(blob, width, density)
         if (cancelled) {
           for (const page of pages) page.close()
           return
@@ -340,6 +370,7 @@ export function PdfDocument({
           pageElement(
             bitmap,
             text[index] ?? [],
+            links[index] ?? [],
             `${label}, page ${index + 1} of ${pages.length}`,
           ),
         )
