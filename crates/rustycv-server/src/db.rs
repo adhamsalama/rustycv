@@ -65,6 +65,8 @@ pub struct Cv {
     pub published: bool,
     /// Whether visitors to the share link may leave comments.
     pub comments_enabled: bool,
+    /// Comments left since the owner last opened them.
+    pub unread_comments: i64,
 }
 
 fn now() -> String {
@@ -113,7 +115,11 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
 pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
     let row = sqlx::query(
         "SELECT id, title, data, created_at, updated_at, public_id, published,
-                comments_enabled
+                comments_enabled,
+                (SELECT COUNT(*) FROM comments
+                 WHERE comments.cv_id = cvs.id
+                   AND (cvs.comments_read_at IS NULL
+                        OR comments.created_at > cvs.comments_read_at)) AS unread_comments
          FROM cvs WHERE id = ? AND user_id = ?",
     )
     .bind(id)
@@ -132,7 +138,32 @@ pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
         public_id: row.get("public_id"),
         published: row.get("published"),
         comments_enabled: row.get("comments_enabled"),
+        unread_comments: row.get("unread_comments"),
     })
+}
+
+/// The owner has seen every comment there is so far.
+///
+/// Marks up to the newest comment's own timestamp rather than the clock's, so
+/// the comparison is between two values this table wrote and a comment
+/// arriving mid-request is still unread afterwards.
+pub async fn mark_comments_read(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
+    let affected = sqlx::query(
+        "UPDATE cvs
+         SET comments_read_at = COALESCE(
+             (SELECT MAX(created_at) FROM comments WHERE cv_id = cvs.id),
+             comments_read_at)
+         WHERE id = ? AND user_id = ?",
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(ApiError::NotFound);
+    }
+    get(pool, user_id, id).await
 }
 
 /// Turn comments on the share link on or off. Existing comments are kept

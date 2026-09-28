@@ -48,6 +48,7 @@ pub fn router() -> Router<AppState> {
         .route("/cvs/{id}/unpublish", post(unpublish_cv))
         .route("/cvs/{id}/comments", get(list_cv_comments))
         .route("/cvs/{id}/comment-settings", put(set_comment_settings))
+        .route("/cvs/{id}/comments/read", post(mark_comments_read))
         .route(
             "/cvs/{id}/comments/{comment_id}",
             axum::routing::delete(delete_cv_comment),
@@ -509,6 +510,16 @@ async fn set_comment_settings(
 ) -> ApiResult<Json<db::Cv>> {
     Ok(Json(
         db::set_comments_enabled(&state.pool, user.id(), &id, settings.enabled).await?,
+    ))
+}
+
+async fn mark_comments_read(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<String>,
+) -> ApiResult<Json<db::Cv>> {
+    Ok(Json(
+        db::mark_comments_read(&state.pool, user.id(), &id).await?,
     ))
 }
 

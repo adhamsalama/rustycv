@@ -1921,3 +1921,39 @@ async fn a_cv_stops_at_a_hundred_comments_until_the_owner_deletes_one() {
     let (status, _) = comment_from(&app, "10.0.0.1", &public_id, "room again").await;
     assert_eq!(status, StatusCode::CREATED);
 }
+
+#[tokio::test]
+async fn unread_comments_are_counted_until_the_owner_opens_them() {
+    let app = TestApp::new().await;
+    let (id, public_id) = published_cv(&app).await;
+    let unread = |cv: &Value| cv["unreadComments"].as_i64().unwrap();
+
+    let (_, cv) = app.json("GET", &format!("/api/cvs/{id}"), json!({})).await;
+    assert_eq!(unread(&cv), 0);
+
+    comment_from(&app, "10.0.0.1", &public_id, "one").await;
+    comment_from(&app, "10.0.0.2", &public_id, "two").await;
+    let (_, cv) = app.json("GET", &format!("/api/cvs/{id}"), json!({})).await;
+    assert_eq!(unread(&cv), 2);
+
+    let (status, cv) = app
+        .json("POST", &format!("/api/cvs/{id}/comments/read"), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(unread(&cv), 0);
+
+    comment_from(&app, "10.0.0.3", &public_id, "three").await;
+    let (_, cv) = app.json("GET", &format!("/api/cvs/{id}"), json!({})).await;
+    assert_eq!(unread(&cv), 1, "only what came after");
+
+    let other = app.register("someone-else@example.com").await;
+    let (status, _) = app
+        .json_as(
+            Some(&other),
+            "POST",
+            &format!("/api/cvs/{id}/comments/read"),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

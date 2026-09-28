@@ -105,6 +105,7 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ enabled }),
     }),
+  markCommentsRead: (id: string) => request<Cv>(`/cvs/${id}/comments/read`, { method: 'POST' }),
   deleteCvComment: (id: string, commentId: string) =>
     request<void>(`/cvs/${id}/comments/${commentId}`, { method: 'DELETE' }),
 

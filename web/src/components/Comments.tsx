@@ -117,6 +117,17 @@ export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void })
     queryFn: () => api.listCvComments(cvId),
   })
 
+  // Opening the dialog is reading them. Marked once the list has arrived, so
+  // a failed load does not clear the count for comments nobody saw.
+  const loaded = comments !== undefined
+  useEffect(() => {
+    if (!loaded) return
+    api
+      .markCommentsRead(cvId)
+      .then((updated) => queryClient.setQueryData(['cv', cvId], updated))
+      .catch(() => {})
+  }, [loaded, cvId, queryClient])
+
   const remove = useMutation({
     mutationFn: (comment: CvComment) => api.deleteCvComment(cvId, comment.id),
     onSuccess: (_, comment) =>

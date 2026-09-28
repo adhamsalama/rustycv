@@ -149,6 +149,8 @@ export interface Cv {
   published: boolean
   /** Whether visitors to the share link may leave comments. Off by default. */
   commentsEnabled: boolean
+  /** Comments left since the owner last opened them. */
+  unreadComments: number
 }
 
 // ---------------------------------------------------------- job tracker

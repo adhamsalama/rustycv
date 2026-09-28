@@ -52,8 +52,20 @@ export function ShareControl({ cv }: { cv: Cv }) {
           <button type="button" className="ghost" onClick={copyLink}>
             {copied ? 'Copied' : 'Copy link'}
           </button>
-          <button type="button" className="ghost" onClick={() => setShowComments(true)}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setShowComments(true)}
+            aria-label={
+              cv.unreadComments > 0 ? `Comments, ${cv.unreadComments} unread` : 'Comments'
+            }
+          >
             Comments
+            {cv.unreadComments > 0 ? (
+              <span className="count-badge" aria-hidden="true">
+                {cv.unreadComments}
+              </span>
+            ) : null}
           </button>
           {showComments ? <CommentsDialog cv={cv} onClose={() => setShowComments(false)} /> : null}
           <button
