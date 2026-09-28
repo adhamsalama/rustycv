@@ -962,11 +962,14 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 
 .landing-facts { color: var(--muted); font-size: var(--text-sm); margin: 0; }
 .landing-facts span { padding-inline: 6px; }
+.landing-pitch { grid-area: pitch; }
+.landing-form { grid-area: form; }
 
 .landing-hero {
   display: grid;
   grid-template-columns: 1.15fr minmax(300px, 360px);
-  gap: 56px;
+  grid-template-areas: 'pitch form' 'papers form';
+  gap: 24px 56px;
   align-items: start;
   padding-block: 40px 64px;
 }
@@ -974,25 +977,66 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .landing-section { padding-block: 40px; border-top: 1px solid var(--border); }
 .landing-section h2 { font: 600 var(--text-xl)/1.2 var(--font-display); letter-spacing: -0.02em; margin: 0 0 10px; }
 
-.landing-templates {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0 48px;
-  margin: 24px 0 0;
+/* The hero's three pages, fanned like sheets dropped on a desk. */
+.landing-papers {
+  grid-area: papers;
+  position: relative;
+  height: 330px;
+  margin-top: 8px;
 }
+.landing-papers .mock { position: absolute; top: 0; width: 210px; }
+.landing-papers .mock:nth-child(1) { left: 0; transform: rotate(-7deg) translateY(28px); }
+.landing-papers .mock:nth-child(2) { left: 150px; transform: rotate(1deg); z-index: 1; }
+.landing-papers .mock:nth-child(3) { left: 300px; transform: rotate(6deg) translateY(22px); z-index: 2; }
 
-/* A rule per row rather than a card per template: six boxes would read as a
-   pricing table, and these are one list. */
-.landing-templates > div {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 16px;
-  padding-block: 12px;
-  border-top: 1px solid var(--border);
+/* --------------------------------------------------------- template sketches
+   A page in CSS: bars where the text goes. Sized in `em` off the card's width
+   (container units), so one sketch reads the same as a thumbnail or in the
+   hero. `color-scheme: light` makes every `light-dark()` token resolve to its
+   light half inside — the page is paper, white in both schemes, like the
+   real preview. Only the templates the hero shows are drawn. */
+.mock {
+  color-scheme: light;
+  container-type: inline-size;
+  aspect-ratio: 210 / 297;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: var(--shadow-paper);
+  overflow: hidden;
+  --ink: var(--text);
+  --faint: color-mix(in srgb, var(--text) 22%, transparent);
+  --tint: color-mix(in srgb, var(--accent) 12%, transparent);
 }
+.mock > * { font-size: 1cqw; }
+.mock i { display: block; font-style: normal; }
+.mock-head { padding: 9em 9em 4em; display: grid; gap: 2.4em; }
+.mock-name { height: 5.5em; width: 55%; background: var(--ink); border-radius: 1em; }
+.mock-contact { width: 75% !important; }
+.mock-body { display: flex; gap: 6em; padding: 0 9em; }
+.mock-rail { display: none; }
+.mock-main, .mock-rail { flex: 1; display: grid; gap: 6em; align-content: start; }
+.mock-sec { display: grid; gap: 2.2em; }
+.mock-h { height: 3.2em; width: 38%; background: var(--accent); border-radius: 1em; margin-bottom: 1em; }
+.mock-entry { display: flex; align-items: center; gap: 2em; }
+.mock-dot { display: none !important; width: 3em; height: 3em; border-radius: 50%; background: var(--accent); }
+.mock-title { height: 2.8em; width: 45%; background: var(--ink); opacity: 0.75; border-radius: 1em; }
+.mock-date { height: 2.4em; width: 18%; margin-left: auto; background: var(--faint); border-radius: 1em; }
+.mock-line { height: 2.2em; background: var(--faint); border-radius: 1em; }
 
-.landing-templates dt { font-weight: 600; color: var(--strong); }
-.landing-templates dd { margin: 0; color: var(--muted); }
+/* Classic: plain dark headings over a hairline. */
+.mock-classic .mock-h { background: var(--ink); box-shadow: 0 1.6em 0 -1.3em var(--faint); }
+
+/* Banner: name reversed out of a filled accent block. */
+.mock-banner .mock-head { background: var(--accent); margin-bottom: 7em; }
+.mock-banner .mock-name { background: #fff; }
+.mock-banner .mock-contact { background: color-mix(in srgb, #fff 55%, transparent); }
+.mock-banner .mock-h { border-left: 2em solid var(--accent); background: var(--ink); }
+
+/* Sidebar: a tinted rail beside the story. */
+.mock-sidebar .mock-body { padding: 0; gap: 0; position: relative; }
+.mock-sidebar .mock-rail { display: grid; flex: 0 0 34%; background: var(--tint); padding: 6em 5em; }
+.mock-sidebar .mock-main { padding: 6em 8em 0 6em; }
+.mock-sidebar .mock-head { background: var(--tint); margin-bottom: 0; }
 
 .landing-notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; }
 .landing-notes h3 { font-size: var(--text-lg); font-weight: 600; margin: 0 0 8px; }
@@ -1003,17 +1047,22 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .landing-foot p + p { margin-top: 8px; }
 
 @media (max-width: 860px) {
-  .landing-hero { grid-template-columns: 1fr; gap: 36px; padding-block: 24px 48px; }
+  .landing-hero {
+    grid-template-columns: 1fr;
+    grid-template-areas: 'form' 'pitch' 'papers';
+    gap: 36px;
+    padding-block: 24px 48px;
+  }
   /* The form leads on a phone: anyone who already has an account is here to
      sign in, and the pitch is still one scroll away. */
-  .landing-form { order: -1; }
-  .landing-templates,
   .landing-notes { grid-template-columns: 1fr; gap: 28px; }
-  .landing-templates { gap: 0; }
 }
 
-@media (max-width: 460px) {
-  .landing-templates > div { grid-template-columns: 1fr; gap: 2px; }
+@media (max-width: 560px) {
+  .landing-papers { height: 230px; }
+  .landing-papers .mock { width: 140px; }
+  .landing-papers .mock:nth-child(2) { left: 95px; }
+  .landing-papers .mock:nth-child(3) { left: 190px; }
 }
 
 /* The divider before the action group reads fine beside the toggle on one
