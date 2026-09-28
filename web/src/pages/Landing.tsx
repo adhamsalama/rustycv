@@ -75,9 +75,6 @@ export function Landing() {
       </main>
 
       <footer className="landing-foot">
-        <p className="muted small">
-          One binary and a SQLite file. Ten CVs and ten applications per account.
-        </p>
         <SiteFooter />
       </footer>
     </div>
