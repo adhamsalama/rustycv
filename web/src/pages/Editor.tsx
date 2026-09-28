@@ -120,8 +120,9 @@ export function Editor() {
   }
 
   return (
-    <div className="editor">
-      <header className="topbar">
+    <>
+      <div className="editor">
+        <header className="topbar">
         <button
           type="button"
           className="ghost outline-toggle"
@@ -243,15 +244,6 @@ export function Editor() {
           {pane.kind === 'section' && !activeSection ? (
             <p className="muted">That section was deleted.</p>
           ) : null}
-
-          {/* At the end of the fields, not pinned across the bottom of the
-              editor: this is a workspace, vertical space is the scarce thing
-              in it, and a credit line is not worth a permanent 36px strip.
-              Scrolling to the end of what you are editing is where it shows,
-              which is where every other page in the app puts it. */}
-          <footer className="app-foot">
-            <SiteFooter />
-          </footer>
         </main>
 
         <aside className="preview-pane">
@@ -263,8 +255,18 @@ export function Editor() {
           />
         </aside>
       </div>
+      </div>
 
-    </div>
+      {/* Below the editor rather than inside it. The shell above is exactly
+          one viewport tall, so this follows it just past the fold: it spans
+          the outline, the fields and the preview together, and you reach it
+          by scrolling to the end of the page — instead of it taking a
+          permanent strip out of the one screen where vertical space is the
+          scarce thing. */}
+      <footer className="editor-credit">
+        <SiteFooter />
+      </footer>
+    </>
   )
 }
 
