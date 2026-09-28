@@ -169,8 +169,14 @@ function parsingWorker(): pdfjs.PDFWorker {
  * same document at a different width. Holding more would mean deciding when to
  * let go of PDFs nobody is looking at.
  */
-let open: { doc: number; task: pdfjs.PDFDocumentLoadingTask; proxy: pdfjs.PDFDocumentProxy } | null =
-  null
+let open: {
+  doc: number
+  task: pdfjs.PDFDocumentLoadingTask
+  proxy: pdfjs.PDFDocumentProxy
+  /** Text and links, in fractions of the page, so they hold at any width and
+   *  a resize — which re-rasterises the same document — skips extracting them. */
+  layers?: { text: TextRun[][]; links: LinkRect[][] }
+} | null = null
 
 async function openDocument(doc: number, bytes: ArrayBuffer) {
   // Already here. The expanded preview sends the bytes for a document the
@@ -349,8 +355,6 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     const opened = performance.now()
 
     const pages: ImageBitmap[] = []
-    const text: TextRun[][] = []
-    const links: LinkRect[][] = []
     // Kept for the text pass below, rather than asked of pdf.js a second time.
     const proxies: pdfjs.PDFPageProxy[] = []
     for (let number = 1; number <= held.proxy.numPages; number += 1) {
@@ -372,11 +376,17 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     }
     const rastered = performance.now()
 
-    for (const page of proxies) {
-      const unscaled = page.getViewport({ scale: 1 })
-      text.push(await textRuns(page, unscaled))
-      links.push(await linkRects(page, unscaled))
+    if (!held.layers) {
+      const text: TextRun[][] = []
+      const links: LinkRect[][] = []
+      for (const page of proxies) {
+        const unscaled = page.getViewport({ scale: 1 })
+        text.push(await textRuns(page, unscaled))
+        links.push(await linkRects(page, unscaled))
+      }
+      held.layers = { text, links }
     }
+    const { text, links } = held.layers
     const extracted = performance.now()
 
     const timing: RasterTiming = {
