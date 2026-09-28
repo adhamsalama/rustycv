@@ -341,9 +341,7 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 /* Shared credit line at the bottom of every page. */
 .site-foot { margin: 0; text-align: center; }
 .app-foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
-/* The last row of the shell, and it stays there: `flex-shrink: 0` keeps it
-   from being squeezed, and the row above it is what scrolls. */
-.editor-foot { flex-shrink: 0; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--surface); font-size: var(--text-xs); }
+
 
 .save-state {
   display: inline-flex; align-items: center; gap: 6px;

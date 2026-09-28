@@ -243,6 +243,15 @@ export function Editor() {
           {pane.kind === 'section' && !activeSection ? (
             <p className="muted">That section was deleted.</p>
           ) : null}
+
+          {/* At the end of the fields, not pinned across the bottom of the
+              editor: this is a workspace, vertical space is the scarce thing
+              in it, and a credit line is not worth a permanent 36px strip.
+              Scrolling to the end of what you are editing is where it shows,
+              which is where every other page in the app puts it. */}
+          <footer className="app-foot">
+            <SiteFooter />
+          </footer>
         </main>
 
         <aside className="preview-pane">
@@ -255,9 +264,6 @@ export function Editor() {
         </aside>
       </div>
 
-      <footer className="editor-foot">
-        <SiteFooter />
-      </footer>
     </div>
   )
 }
