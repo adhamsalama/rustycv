@@ -292,6 +292,30 @@ reference away from breaking:
   `task.destroy()` terminates it, which would mean spawning and killing a
   worker over a 1.2MB script on every pause in typing.
 
+**A canvas has no text in it**, so selecting, copying and Ctrl+F would all be
+lost — which is something the browser's viewer could do. They come back as a
+layer of `color: transparent` spans over each page, the same trick pdf.js's
+own viewer uses (transparent rather than `opacity: 0`, so the selection
+highlight is still painted).
+
+The geometry is worked out **in the worker**, and that is the whole point:
+`TextLayer` is exported from pdfjs-dist and would have done it, but importing
+it on the main thread pulls the entire 437kB/131kB-gzipped pdf.js chunk back
+into the bundle — it does not tree-shake, measured. What crosses the wire
+instead is a list of numbers per run. The maths mirrors pdf.js's own
+`#appendText`: transform the item into page space, take the font height off
+the transform, lift the baseline by the font's ascent, and `measureText` the
+string to find how far the browser's fallback font is from the width the PDF
+claims. That last correction is `scaleX`, and without it a line drifts further
+right with every word and the selection drifts with it.
+
+Runs are stored as **fractions of the page**, so the layer survives a resize
+without recomputing: the container is `container-type: inline-size` and the
+layer is `font-size: 100cqw`, which makes 1em one page width. Note
+`inline-size` and not `size` — size containment stops the canvas contributing
+any height, which collapses the page box to nothing and looks exactly like the
+preview failing to render.
+
 **The bytes are sent once per document.** Re-rasterising at a new width —
 which is what dragging the window edge does — reuses the document the worker
 still holds, because re-parsing an unchanged PDF to lay it out slightly wider
@@ -308,8 +332,8 @@ parsed document, so the second would destroy the one the first was still
 rasterising from — and the preview and the expanded view are exactly that
 pair: two components, two widths, one PDF.
 
-**Timings.** `performance.measure` entries are always written — `pdf: parse`
-and `pdf: rasterise` on the worker's track, `pdf: adopt` and `pdf: preview` on
+**Timings.** `performance.measure` entries are always written — `pdf: parse`,
+`pdf: rasterise` and `pdf: text` on the worker's track, `pdf: adopt` and `pdf: preview` on
 the main thread's — so the Performance panel needs no build flag. A summary
 line per render is logged when `localStorage['rustycv:profile']` is set;
 deliberately a runtime switch rather than `import.meta.env.DEV`, because "is

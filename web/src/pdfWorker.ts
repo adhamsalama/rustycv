@@ -38,17 +38,52 @@ export interface RasterRequest {
   density: number
 }
 
+/**
+ * One run of text, positioned in *fractions of the page*.
+ *
+ * Fractions rather than pixels so the same geometry survives a resize: the
+ * page is re-rasterised at the new width but these need no recomputing.
+ *
+ * `scaleX` is the correction that makes a span the width the PDF says the
+ * text is, rather than the width the browser's fallback font happens to
+ * render it at. Without it selection drifts further right along every line —
+ * it is what pdf.js's own text layer spends its `measureText` on.
+ */
+export interface TextRun {
+  text: string
+  /** Fraction of the page's width and height, from the top left. */
+  left: number
+  top: number
+  /** Font height as a fraction of the page *width*, which is the dimension
+   *  the layer's container query measures. */
+  size: number
+  family: string
+  scaleX: number
+  /** Degrees, for the rare rotated run. */
+  angle: number
+  rtl: boolean
+}
+
 /** How long each half took, for the profiling the editor can switch on. */
 export interface RasterTiming {
   /** Parsing. Zero when the document was already open. */
   open: number
   /** Painting every page. */
   raster: number
+  /** Pulling the text out of them, for the selectable layer. */
+  text: number
   reused: boolean
 }
 
 export type RasterMessage =
-  | { kind: 'rastered'; id: number; pages: ImageBitmap[]; timing: RasterTiming }
+  | {
+      kind: 'rastered'
+      id: number
+      pages: ImageBitmap[]
+      /** One list per page, same order. */
+      text: TextRun[][]
+      timing: RasterTiming
+    }
   /** The document asked for is not the one held. Send the bytes again. */
   | { kind: 'stale'; id: number }
   | { kind: 'failed'; id: number; message: string }
@@ -149,6 +184,91 @@ async function openDocument(doc: number, bytes: ArrayBuffer) {
   return open
 }
 
+/**
+ * Where every run of text sits on the page, as the DOM will need it.
+ *
+ * Worked out here rather than on the main thread because the arithmetic wants
+ * pdf.js — `Util.transform`, the text content, the font metrics — and pdf.js
+ * is already loaded in this worker. Importing it on the other side to do the
+ * same sums would put a second 437kB copy in the bundle (131kB gzipped, and
+ * it does not tree-shake: measured). What crosses the wire instead is a list
+ * of numbers the main thread can turn into spans without knowing anything
+ * about PDFs.
+ *
+ * The maths mirrors pdf.js's own text layer: transform the item into page
+ * space, take the font height off the transform, lift the baseline by the
+ * font's ascent, and measure the string to find how far off the rendered
+ * width is.
+ */
+interface RawDims {
+  pageWidth: number
+  pageHeight: number
+  pageX: number
+  pageY: number
+}
+
+async function textRuns(
+  page: pdfjs.PDFPageProxy,
+  viewport: pdfjs.PageViewport,
+): Promise<TextRun[]> {
+  const content = await page.getTextContent()
+  // `rawDims` is typed as a bare `Object` by pdf.js's generated types; it is
+  // four numbers, and `TextLayer` reads exactly these.
+  const { pageWidth, pageHeight, pageX, pageY } = viewport.rawDims as RawDims
+  // The page's own transform at scale 1: flip the y axis and move the origin
+  // to the top left, which is where the DOM measures from.
+  const flip = [1, 0, 0, -1, -pageX, pageY + pageHeight]
+
+  // Any size will do — `scaleX` is a ratio of widths, so it does not depend
+  // on the one measured at.
+  const ruler = new OffscreenCanvas(1, 1).getContext('2d')
+  const MEASURE_AT = 100
+
+  const runs: TextRun[] = []
+  for (const item of content.items) {
+    if (!('str' in item) || item.str === '') continue
+
+    const style = content.styles[item.fontName] as
+      | { fontFamily?: string; ascent?: number; vertical?: boolean }
+      | undefined
+    const tx = pdfjs.Util.transform(flip, item.transform)
+
+    let angle = Math.atan2(tx[1], tx[0])
+    if (style?.vertical) angle += Math.PI / 2
+
+    const height = Math.hypot(tx[2], tx[3])
+    // pdf.js measures a font's ascent when the metric is missing; 0.8 is the
+    // default it falls back to, and every font Typst embeds reports one.
+    const ascent = height * (style?.ascent ?? 0.8)
+    const family = style?.fontFamily ?? 'sans-serif'
+
+    const left = angle === 0 ? tx[4] : tx[4] + ascent * Math.sin(angle)
+    const top = angle === 0 ? tx[5] - ascent : tx[5] - ascent * Math.cos(angle)
+
+    let scaleX = 1
+    const target = style?.vertical ? item.height : item.width
+    if (ruler && target > 0 && item.str.length > 0) {
+      ruler.font = `${MEASURE_AT}px ${family}`
+      const drawn = ruler.measureText(item.str).width
+      // `target` is in page units and `drawn` at MEASURE_AT px, so put them
+      // on the same footing before dividing.
+      if (drawn > 0) scaleX = (target * (MEASURE_AT / height)) / drawn
+    }
+
+    runs.push({
+      text: item.str,
+      left: left / pageWidth,
+      top: top / pageHeight,
+      size: height / pageWidth,
+      family,
+      scaleX,
+      angle: angle === 0 ? 0 : angle * (180 / Math.PI),
+      rtl: item.dir === 'rtl',
+    })
+  }
+  return runs
+}
+
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -193,6 +313,7 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     const opened = performance.now()
 
     const pages: ImageBitmap[] = []
+    const text: TextRun[][] = []
     for (let number = 1; number <= held.proxy.numPages; number += 1) {
       const page = await held.proxy.getPage(number)
       const unscaled = page.getViewport({ scale: 1 })
@@ -211,15 +332,22 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     }
     const rastered = performance.now()
 
+    for (let number = 1; number <= held.proxy.numPages; number += 1) {
+      const page = await held.proxy.getPage(number)
+      text.push(await textRuns(page, page.getViewport({ scale: 1 })))
+    }
+    const extracted = performance.now()
+
     const timing: RasterTiming = {
       open: bytes === null ? 0 : measure('pdf: parse', started, opened),
       raster: measure('pdf: rasterise', opened, rastered),
+      text: measure('pdf: text', rastered, extracted),
       reused: bytes === null,
     }
 
     // Transferred, not copied: an A4 page at 2x is about 5MB and there may be
     // several of them.
-    self.postMessage({ kind: 'rastered', id, pages, timing } satisfies RasterMessage, pages)
+    self.postMessage({ kind: 'rastered', id, pages, text, timing } satisfies RasterMessage, pages)
   } catch (error) {
     // A document that failed half-way through opening is not one to keep.
     open = null

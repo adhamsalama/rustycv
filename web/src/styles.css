@@ -547,15 +547,47 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
    makes it crisp on a retina display rather than merely large. */
 .pdf-scroll { flex: 1; min-width: 0; overflow: auto; padding: 24px 20px 34px; }
 .pdf-pages { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+/* The page box, and the container the text layer sizes itself against.
+   `inline-size`, not `size`: size containment stops the canvas contributing
+   any height, which collapses the page to nothing — the sort of thing that
+   looks like the preview failing to render. */
 .pdf-page {
-  display: block;
+  position: relative;
   width: 100%;
-  height: auto;
-  /* Paper. White in both schemes, because that is the page. */
-  background: #fff;
   border-radius: 3px;
   box-shadow: var(--shadow-paper);
+  /* Paper. White in both schemes, because that is the page. */
+  background: #fff;
+  container-type: inline-size;
 }
+.pdf-raster { display: block; width: 100%; height: auto; border-radius: 3px; }
+
+/* The text, invisible, over the raster.
+   `color: transparent` rather than `opacity: 0`, so a selection highlight is
+   still painted — the point of the layer is that you can select what you see.
+   `font-size: 100cqw` makes 1em one page width, which is the unit every run's
+   size is expressed in. */
+.pdf-text {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  font-size: 100cqw;
+  line-height: 1;
+  color: transparent;
+  /* A run is placed by its own top-left corner. */
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+}
+.pdf-text span {
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+  transform: rotate(var(--angle, 0deg)) scaleX(var(--scale-x, 1));
+}
+.pdf-text ::selection { background: color-mix(in srgb, var(--accent) 45%, transparent); }
 
 /* Sits over the page rather than beside it: the one number people keep
    checking, without spending a row of chrome on it. */

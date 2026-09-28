@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDebounced } from '../hooks/useDebounced'
-import type { RasterMessage, RasterRequest, RasterTiming } from '../pdfWorker'
+import type { RasterMessage, RasterRequest, RasterTiming, TextRun } from '../pdfWorker'
 
 /**
  * The rendered CV, drawn page by page onto canvases.
@@ -18,6 +18,12 @@ import type { RasterMessage, RasterRequest, RasterTiming } from '../pdfWorker'
  * everywhere, and it hands us three things the iframe could not: the page
  * count, a scroll position that survives a re-render, and a page that can have
  * a shadow under it.
+ *
+ * A canvas has no text in it, so selecting, copying and Ctrl+F would all be
+ * lost — which is a capability the browser's viewer had. They come back as an
+ * invisible layer of positioned spans over each page, the same trick pdf.js's
+ * own viewer uses. The geometry is worked out in the worker, because doing it
+ * here would mean a second copy of pdf.js in the bundle.
  *
  * Two tiers:
  *
@@ -70,6 +76,7 @@ function documentId(blob: Blob): number {
 
 interface Rastered {
   pages: ImageBitmap[]
+  text: TextRun[][]
   timing: RasterTiming
 }
 
@@ -95,7 +102,8 @@ function rasteriserWorker(): Worker {
     }
     waiting.delete(message.id)
 
-    if (message.kind === 'rastered') pending.resolve({ pages: message.pages, timing: message.timing })
+    if (message.kind === 'rastered')
+      pending.resolve({ pages: message.pages, text: message.text, timing: message.timing })
     else if (message.kind === 'stale') pending.resolve('stale')
     else pending.reject(new Error(message.message))
   }
@@ -152,6 +160,51 @@ function adopt(bitmap: ImageBitmap): HTMLCanvasElement {
   }
   context.transferFromImageBitmap(bitmap)
   return canvas
+}
+
+/**
+ * The invisible text over a page.
+ *
+ * Everything is in percentages of the page box, so the layer needs no
+ * measuring of its own and survives the page being laid out at any width —
+ * only `font-size` scales with it, through `em` on a container whose own font
+ * size is the page height.
+ *
+ * `scaleX` squeezes each span to the width the PDF says its text is. Without
+ * it a line drifts further right with every word, and the selection drifts
+ * with it.
+ */
+function textLayer(runs: TextRun[]): HTMLDivElement {
+  const layer = document.createElement('div')
+  layer.className = 'pdf-text'
+  layer.setAttribute('aria-hidden', 'true')
+
+  for (const run of runs) {
+    const span = document.createElement('span')
+    span.textContent = run.text
+    span.style.left = `${(run.left * 100).toFixed(3)}%`
+    span.style.top = `${(run.top * 100).toFixed(3)}%`
+    span.style.fontSize = `${run.size.toFixed(5)}em`
+    span.style.fontFamily = run.family
+    if (run.scaleX !== 1) span.style.setProperty('--scale-x', run.scaleX.toFixed(4))
+    if (run.angle !== 0) span.style.setProperty('--angle', `${run.angle.toFixed(2)}deg`)
+    if (run.rtl) span.dir = 'rtl'
+    layer.append(span)
+  }
+  return layer
+}
+
+/** One page: the raster, and the text you can select on top of it. */
+function pageElement(bitmap: ImageBitmap, runs: TextRun[], label: string): HTMLDivElement {
+  const wrap = document.createElement('div')
+  wrap.className = 'pdf-page'
+
+  const canvas = adopt(bitmap)
+  canvas.className = 'pdf-raster'
+  canvas.setAttribute('role', 'img')
+  canvas.setAttribute('aria-label', label)
+  wrap.append(canvas, textLayer(runs))
+  return wrap
 }
 
 async function rasterise(blob: Blob, width: number, density: number): Promise<Rastered> {
@@ -276,20 +329,20 @@ export function PdfDocument({
         // Cap the ratio: a 3x display would quadruple the pixels for a
         // difference nobody can see on a page this size.
         const density = Math.min(window.devicePixelRatio || 1, 2)
-        const { pages, timing } = await rasterise(blob, width, density)
+        const { pages, text, timing } = await rasterise(blob, width, density)
         if (cancelled) {
           for (const page of pages) page.close()
           return
         }
 
         const adopted = performance.now()
-        const canvases = pages.map((bitmap, index) => {
-          const canvas = adopt(bitmap)
-          canvas.className = 'pdf-page'
-          canvas.setAttribute('role', 'img')
-          canvas.setAttribute('aria-label', `${label}, page ${index + 1} of ${pages.length}`)
-          return canvas
-        })
+        const canvases = pages.map((bitmap, index) =>
+          pageElement(
+            bitmap,
+            text[index] ?? [],
+            `${label}, page ${index + 1} of ${pages.length}`,
+          ),
+        )
 
         report.current?.(canvases.length)
 
@@ -311,6 +364,7 @@ export function PdfDocument({
           console.debug(
             `[rustycv] preview ${Math.round(done - asked)}ms` +
               ` = parse ${Math.round(timing.open)} + raster ${Math.round(timing.raster)}` +
+              ` + text ${Math.round(timing.text)}` +
               ` + adopt ${Math.round(done - adopted)}` +
               `${timing.reused ? ' (document reused)' : ''}` +
               ` — ${canvases.length} page(s) at ${width}px`,
