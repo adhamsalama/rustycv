@@ -168,6 +168,9 @@ export function Editor() {
         <AppearanceToggle />
         {data ? <ShareControl cv={data} /> : null}
         <div className="editor-actions">
+          <a className="ghost wide-only" href={api.exportUrl(id)}>
+            Export JSON
+          </a>
           <MoreMenu id={id} cv={data} />
           <DownloadPdf id={id} document={document} title={title} mode={config.renderMode} />
         </div>

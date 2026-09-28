@@ -4,7 +4,8 @@ import type { Cv } from '../types'
 import { useShare } from './ShareControl'
 
 /**
- * The editor's less-used actions: exporting the JSON and unpublishing. Closes
+ * The editor's less-used actions on a phone, where they sit inline on a wider
+ * screen: exporting the JSON and unpublishing. Closes
  * on Escape, a click outside, or picking an item.
  */
 export function MoreMenu({ id, cv }: { id: string; cv: Cv | undefined }) {

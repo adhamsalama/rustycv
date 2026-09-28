@@ -23,9 +23,9 @@ export function useShare(cv: Cv) {
   return { publish, unpublish, pending }
 }
 
-/** Unpublishing lives in the editor's More menu; it is rare and easy to hit. */
+/** On a phone, Unpublish moves into the editor's More menu instead. */
 export function ShareControl({ cv }: { cv: Cv }) {
-  const { publish, pending } = useShare(cv)
+  const { publish, unpublish, pending } = useShare(cv)
   const [copied, setCopied] = useState(false)
 
   const copyLink = async () => {
@@ -49,6 +49,14 @@ export function ShareControl({ cv }: { cv: Cv }) {
           </a>
           <button type="button" className="ghost" onClick={copyLink}>
             {copied ? 'Copied' : 'Copy link'}
+          </button>
+          <button
+            type="button"
+            className="ghost wide-only"
+            disabled={pending}
+            onClick={() => unpublish.mutate()}
+          >
+            Unpublish
           </button>
         </>
       ) : (
