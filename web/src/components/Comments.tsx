@@ -23,7 +23,10 @@ function CommentList({
           <div className="comment-meta">
             <strong>{comment.author || 'Anonymous'}</strong>
             <time className="muted small" dateTime={comment.createdAt}>
-              {new Date(comment.createdAt).toLocaleDateString()}
+              {new Date(comment.createdAt).toLocaleString(undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })}
             </time>
             {onDelete ? (
               <button type="button" className="ghost small" onClick={() => onDelete(comment)}>
