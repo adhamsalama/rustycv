@@ -1,11 +1,33 @@
 # syntax=docker/dockerfile:1
 
 # The browser renderer: the same Rust render path compiled to wasm, so the
-# editor can build a PDF without a round trip. First of the three stages,
+# editor can build a PDF without a round trip. Built before the editor,
 # because `pnpm build` ships whatever is sitting in web/public/ and this is
 # what puts it there.
-FROM rust:1.95-bookworm AS wasm
+#
+# Both Rust stages build their dependencies from a cargo-chef recipe before
+# copying any source in. Without that, one edited line in any crate, template or
+# font misses the layer cache for the whole `cargo build`, and the Typst tree is
+# recompiled from nothing — twice, once per stage. The recipe changes only when
+# a manifest or the lockfile does, so an ordinary commit reuses the compiled
+# dependencies and rebuilds just the workspace crates.
+FROM rust:1.95-bookworm AS chef
+RUN cargo install cargo-chef --version 0.1.78 --locked
 WORKDIR /src
+
+# Reads every manifest and writes the recipe. Rerun on any change to the
+# context, which is cheap; what matters is that its *output* is usually
+# identical, so the `cook` steps below stay cached.
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates crates
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS wasm
+RUN rustup target add wasm32-unknown-unknown
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook -p rustycv-wasm --target wasm32-unknown-unknown \
+      --profile wasm-release --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY templates templates
@@ -24,7 +46,6 @@ RUN set -eux; \
     release="wasm-bindgen-${version}-${arch}-unknown-linux-musl"; \
     curl -sSfL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/${release}.tar.gz" \
       | tar xz --strip-components=1 -C /usr/local/bin "${release}/wasm-bindgen"; \
-    rustup target add wasm32-unknown-unknown; \
     cargo build -p rustycv-wasm --target wasm32-unknown-unknown --profile wasm-release; \
     wasm-bindgen --target web --no-typescript --out-dir /wasm \
       target/wasm32-unknown-unknown/wasm-release/rustycv_wasm.wasm
@@ -64,8 +85,9 @@ RUN apt-get update \
 # The server. Templates, fonts and icons are `include_str!`/`include_bytes!`d
 # into the binary, so they have to be here at build time even though nothing
 # reads them from disk afterwards.
-FROM rust:1.95-bookworm AS server
-WORKDIR /src
+FROM chef AS server
+COPY --from=planner /src/recipe.json recipe.json
+RUN cargo chef cook --release -p rustycv-server --recipe-path recipe.json
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY templates templates
