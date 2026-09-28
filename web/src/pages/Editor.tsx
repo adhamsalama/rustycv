@@ -15,6 +15,7 @@ import { warmRasteriser } from '../components/PdfDocument'
 import { warmBrowserRenderer } from '../renderer'
 import { AppearanceToggle } from '../components/AppearanceToggle'
 import { DownloadPdf } from '../components/DownloadPdf'
+import { MoreMenu } from '../components/MoreMenu'
 import { ShareControl } from '../components/ShareControl'
 import { SiteFooter } from '../components/SiteFooter'
 import { SortableList, SortableRow } from '../components/Sortable'
@@ -167,9 +168,7 @@ export function Editor() {
         <AppearanceToggle />
         {data ? <ShareControl cv={data} /> : null}
         <div className="editor-actions">
-          <a className="ghost" href={api.exportUrl(id)}>
-            Export JSON
-          </a>
+          <MoreMenu id={id} cv={data} />
           <DownloadPdf id={id} document={document} title={title} mode={config.renderMode} />
         </div>
       </header>

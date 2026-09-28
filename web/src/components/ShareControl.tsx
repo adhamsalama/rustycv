@@ -4,17 +4,15 @@ import { api } from '../api'
 import type { Cv } from '../types'
 
 /**
- * The publish toggle plus the link once it exists.
+ * The publish button plus the link once it exists.
  *
  * Publishing and unpublishing both come back with the full `Cv`, so the
  * mutation writes it straight into the `['cv', id]` cache rather than
  * refetching — the same document the editor already has, just with a newer
  * `publicId`/`published`.
  */
-export function ShareControl({ cv }: { cv: Cv }) {
+export function useShare(cv: Cv) {
   const queryClient = useQueryClient()
-  const [copied, setCopied] = useState(false)
-
   const onSettled = (updated: Cv | undefined) => {
     if (updated) queryClient.setQueryData(['cv', cv.id], updated)
   }
@@ -22,6 +20,13 @@ export function ShareControl({ cv }: { cv: Cv }) {
   const unpublish = useMutation({ mutationFn: () => api.unpublishCv(cv.id), onSuccess: onSettled })
 
   const pending = publish.isPending || unpublish.isPending
+  return { publish, unpublish, pending }
+}
+
+/** Unpublishing lives in the editor's More menu; it is rare and easy to hit. */
+export function ShareControl({ cv }: { cv: Cv }) {
+  const { publish, pending } = useShare(cv)
+  const [copied, setCopied] = useState(false)
 
   const copyLink = async () => {
     if (!cv.publicId) return
@@ -44,14 +49,6 @@ export function ShareControl({ cv }: { cv: Cv }) {
           </a>
           <button type="button" className="ghost" onClick={copyLink}>
             {copied ? 'Copied' : 'Copy link'}
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            disabled={pending}
-            onClick={() => unpublish.mutate()}
-          >
-            Unpublish
           </button>
         </>
       ) : (
