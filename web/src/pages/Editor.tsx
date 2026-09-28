@@ -14,6 +14,7 @@ import { PdfPreview, type PdfPreviewHandle } from '../components/PdfPreview'
 import { warmRasteriser } from '../components/PdfDocument'
 import { warmBrowserRenderer } from '../renderer'
 import { AppearanceToggle } from '../components/AppearanceToggle'
+import { Logo } from '../components/Logo'
 import { DownloadPdf } from '../components/DownloadPdf'
 import { MoreMenu } from '../components/MoreMenu'
 import { ShareControl } from '../components/ShareControl'
@@ -147,6 +148,9 @@ export function Editor() {
         >
           <Icon name="menu" />
         </button>
+        <Link to="/" className="topbar-logo" aria-label="RustyCV home">
+          <Logo />
+        </Link>
         <Link to="/" className="ghost back-link" aria-label="All CVs">
           <Icon name="back" />
           <span className="back-label">All CVs</span>

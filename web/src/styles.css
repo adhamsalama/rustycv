@@ -862,6 +862,7 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
   .topbar :is(button, a.ghost, .primary) { padding: 6px 9px; white-space: nowrap; }
   /* Row one: menu, back, name, save state. The name takes whatever is left. */
   .back-label { display: none; }
+  .topbar-logo .logo > span { display: none; }
   .cv-title { min-width: 0; flex: 1 1 0; }
   .topbar .spacer { flex-basis: 100%; height: 0; }
   /* Row two is the actions. The address is one tap away behind Copy link. */
@@ -957,6 +958,10 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 }
 .logo svg { width: 1.35em; height: 1.35em; flex: none; }
 .logo-rust { color: var(--rust); }
+/* The editor's bar is busier than the other headers, so the name sits a size
+   down there, and drops to the mark alone on a phone. */
+.topbar-logo { display: inline-flex; margin-inline: 4px 8px; text-decoration: none; }
+.topbar-logo .logo { font-size: var(--text-lg); }
 
 .landing h1 {
   /* Scales with the viewport instead of breaking at one arbitrary width. */
