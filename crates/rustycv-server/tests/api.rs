@@ -1957,3 +1957,22 @@ async fn unread_comments_are_counted_until_the_owner_opens_them() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn the_owner_sees_the_newest_comment_first() {
+    let app = TestApp::new().await;
+    let (id, public_id) = published_cv(&app).await;
+    for body in ["first", "second", "third"] {
+        comment_from(&app, "10.0.0.1", &public_id, body).await;
+    }
+    let (_, owned) = app
+        .json("GET", &format!("/api/cvs/{id}/comments"), json!({}))
+        .await;
+    let bodies: Vec<_> = owned
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["body"].as_str().unwrap())
+        .collect();
+    assert_eq!(bodies, ["third", "second", "first"]);
+}

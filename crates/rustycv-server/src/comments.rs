@@ -82,10 +82,11 @@ async fn published_cv(pool: &SqlitePool, public_id: &str) -> ApiResult<(String, 
     Ok((row.get("id"), row.get("comments_enabled")))
 }
 
+/// Newest first: the owner comes to see what is new.
 async fn list_for(pool: &SqlitePool, cv_id: &str) -> ApiResult<Vec<Comment>> {
     let rows = sqlx::query(
         "SELECT id, author, body, created_at FROM comments
-         WHERE cv_id = ? ORDER BY created_at, id",
+         WHERE cv_id = ? ORDER BY created_at DESC, id DESC",
     )
     .bind(cv_id)
     .fetch_all(pool)
