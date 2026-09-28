@@ -543,7 +543,7 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 
 .field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .field-label { font: 500 12px/1 var(--font-ui); color: var(--muted); }
-.field input[type="text"], .field input[type="url"], .field input[type="email"],
+.field input[type="text"], .field input[type="url"], .field input[type="email"], .field input[type="password"],
 .field input[type="tel"], .field input[type="number"], .field select, .field textarea {
   font: var(--text-base)/1.4 var(--font-ui); padding: 9px 11px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--raised); color: var(--text); width: 100%;
