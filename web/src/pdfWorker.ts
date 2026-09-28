@@ -351,8 +351,11 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     const pages: ImageBitmap[] = []
     const text: TextRun[][] = []
     const links: LinkRect[][] = []
+    // Kept for the text pass below, rather than asked of pdf.js a second time.
+    const proxies: pdfjs.PDFPageProxy[] = []
     for (let number = 1; number <= held.proxy.numPages; number += 1) {
       const page = await held.proxy.getPage(number)
+      proxies.push(page)
       const unscaled = page.getViewport({ scale: 1 })
       const viewport = page.getViewport({ scale: (width / unscaled.width) * density })
       const canvas = new OffscreenCanvas(
@@ -369,8 +372,7 @@ async function handle({ id, doc, bytes, width, density }: RasterRequest): Promis
     }
     const rastered = performance.now()
 
-    for (let number = 1; number <= held.proxy.numPages; number += 1) {
-      const page = await held.proxy.getPage(number)
+    for (const page of proxies) {
       const unscaled = page.getViewport({ scale: 1 })
       text.push(await textRuns(page, unscaled))
       links.push(await linkRects(page, unscaled))
