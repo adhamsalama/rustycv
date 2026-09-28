@@ -338,8 +338,13 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 .share-embed { flex: 1; min-height: 0; width: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .share-foot { flex-shrink: 0; }
 
-/* Shared credit line at the bottom of every page. */
-.site-foot { margin: 0; text-align: center; }
+/* Shared credit line at the bottom of every page.
+   The URL breaks at its slashes, which in a column as narrow as the editor's
+   fields splits it across two lines mid-path. Holding it together moves the
+   break to the dash, where a sentence is supposed to break, and `balance`
+   keeps the two lines a similar length rather than leaving one orphan. */
+.site-foot { margin: 0; text-align: center; text-wrap: balance; }
+.site-foot a { white-space: nowrap; }
 .app-foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); }
 
 
