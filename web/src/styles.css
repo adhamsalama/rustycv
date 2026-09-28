@@ -556,10 +556,14 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
 
 /* Sits under the caret rather than replacing the content, so it disappears the
    moment anything is typed. */
+/* Shares the content's grid cell rather than being positioned over it, so a
+   placeholder that wraps (every one does on a phone) grows the box instead of
+   spilling out of it. */
+.rt-editor { display: grid; }
+.rt-editor > * { grid-column: 1; min-width: 0; }
+.rt-editor > :nth-child(2), .rt-placeholder { grid-row: 2; }
 .rt-placeholder {
-  position: absolute;
-  top: 44px;
-  left: 14px;
+  padding: 11px 13px;
   color: var(--muted);
   pointer-events: none;
 }
@@ -817,8 +821,17 @@ button:disabled:hover { background: transparent; color: var(--muted); filter: no
   /* Every other topbar control is a fixed-size button; the title is the one
      that would otherwise be squeezed unreadable, so it alone claims a full
      row and pushes the rest of the row's controls onto the next. */
-  .cv-title { min-width: 0; flex: 1 1 100%; }
+  .topbar { gap: 4px; }
+  .topbar :is(button, a.ghost, .primary) { padding: 6px 9px; white-space: nowrap; }
+  /* Row one: menu, back, name, save state. The name takes whatever is left. */
+  .back-label { display: none; }
+  .cv-title { min-width: 0; flex: 1 1 0; }
   .topbar .spacer { flex-basis: 100%; height: 0; }
+  /* Row two is the actions. The address is one tap away behind Copy link. */
+  .share-link { display: none; }
+  .editor-actions { margin-left: 0; padding-left: 0; border-left: none; }
+  .link-row { flex-wrap: wrap; }
+  .link-row .field { flex: 1 1 40%; min-width: 0; }
   /* Anchored right would hang off the screen once the button has wrapped. */
   .appearance-panel { position: fixed; top: auto; right: 10px; left: 10px; width: auto; }
 }

@@ -139,8 +139,9 @@ export function Editor() {
         >
           <Icon name="menu" />
         </button>
-        <Link to="/" className="ghost">
-          ← All CVs
+        <Link to="/" className="ghost back-link" aria-label="All CVs">
+          <Icon name="back" />
+          <span className="back-label">All CVs</span>
         </Link>
         <input
           className="cv-title"
