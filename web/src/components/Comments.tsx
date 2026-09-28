@@ -152,11 +152,11 @@ export function CommentsDialog({ cv, onClose }: { cv: Cv; onClose: () => void })
             disabled={toggle.isPending}
             onChange={(e) => toggle.mutate(e.target.checked)}
           />
-          <span>Let visitors to the share link send you comments</span>
+          <span>Allow comments</span>
         </label>
         {cv.commentsEnabled ? null : (
           <p className="muted small">
-            Comments are off: visitors cannot send new ones. These are kept.
+            Comments are off. People who open your link can’t leave new ones, but the ones below are kept.
           </p>
         )}
         {isLoading ? (
