@@ -63,7 +63,7 @@ function usePane(): [Pane, (pane: Pane) => void] {
  * One delay now, not two: the save and the render are a single chain, so there
  * is nothing left to tune them against each other.
  */
-const EDIT_SETTLE_MS = 400
+const EDIT_SETTLE_MS = 250
 
 export function Editor() {
   const { id = '' } = useParams()
