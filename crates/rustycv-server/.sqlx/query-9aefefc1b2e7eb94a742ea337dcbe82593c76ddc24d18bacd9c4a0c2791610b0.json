@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO cvs (id, title, schema_version, data, created_at, updated_at)\n         VALUES ('legacy-cv', 'From before', 1, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "9aefefc1b2e7eb94a742ea337dcbe82593c76ddc24d18bacd9c4a0c2791610b0"
+}

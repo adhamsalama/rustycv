@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE applications\n         SET company = ?, role = ?, url = ?, notes = ?, status = ?, cv_id = ?, updated_at = ?\n         WHERE id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "cde3ee2beff899f1ee664f7c895b731ac2118bc7759a1f728e1c78932d320b97"
+}

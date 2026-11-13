@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cvs SET public_pdf = ?, public_pdf_cached_for = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "9fb5f2b3d864dc75f2981207956a23ac13bf95f19a698118f8a52199e5bf9401"
+}

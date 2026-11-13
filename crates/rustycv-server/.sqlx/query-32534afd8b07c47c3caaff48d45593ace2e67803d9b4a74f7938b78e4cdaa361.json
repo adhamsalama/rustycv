@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, comments_enabled AS \"comments_enabled: bool\"\n           FROM cvs WHERE public_id = ? AND published = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "comments_enabled: bool",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "32534afd8b07c47c3caaff48d45593ace2e67803d9b4a74f7938b78e4cdaa361"
+}

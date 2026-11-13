@@ -11,7 +11,7 @@
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -141,19 +141,19 @@ pub async fn signup(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<U
     // Whether this is the first account has to be read inside the transaction
     // that writes it, or two simultaneous signups could both decide they were
     // first and both adopt the orphans.
-    let existing: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+    let existing = sqlx::query_scalar!(r#"SELECT COUNT(*) AS "count!: i64" FROM users"#)
         .fetch_one(&mut *tx)
         .await?;
 
-    let inserted = sqlx::query(
+    let inserted = sqlx::query!(
         "INSERT INTO users (id, email, password_hash, created_at)
          VALUES (?, ?, ?, ?)
          ON CONFLICT (email) DO NOTHING",
+        id,
+        email,
+        hash,
+        ts,
     )
-    .bind(&id)
-    .bind(&email)
-    .bind(&hash)
-    .bind(&ts)
     .execute(&mut *tx)
     .await?
     .rows_affected();
@@ -168,14 +168,15 @@ pub async fn signup(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<U
     }
 
     if existing == 0 {
-        sqlx::query("UPDATE cvs SET user_id = ? WHERE user_id IS NULL")
-            .bind(&id)
+        sqlx::query!("UPDATE cvs SET user_id = ? WHERE user_id IS NULL", id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE applications SET user_id = ? WHERE user_id IS NULL")
-            .bind(&id)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "UPDATE applications SET user_id = ? WHERE user_id IS NULL",
+            id
+        )
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await?;
@@ -195,10 +196,12 @@ pub async fn signup(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<U
 pub async fn login(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<User> {
     let email = normalize_email(&credentials.email);
 
-    let row = sqlx::query("SELECT id, email, password_hash, created_at FROM users WHERE email = ?")
-        .bind(&email)
-        .fetch_optional(pool)
-        .await?;
+    let row = sqlx::query!(
+        "SELECT id, email, password_hash, created_at FROM users WHERE email = ?",
+        email,
+    )
+    .fetch_optional(pool)
+    .await?;
 
     let Some(row) = row else {
         // Still spend the time an Argon2 verification costs. Returning early
@@ -208,8 +211,7 @@ pub async fn login(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<Us
         return Err(ApiError::InvalidCredentials);
     };
 
-    let stored: String = row.get("password_hash");
-    let parsed = PasswordHash::new(&stored).map_err(|e| {
+    let parsed = PasswordHash::new(&row.password_hash).map_err(|e| {
         tracing::error!(error = %e, "a stored password hash did not parse");
         ApiError::Internal
     })?;
@@ -219,9 +221,9 @@ pub async fn login(pool: &SqlitePool, credentials: &Credentials) -> ApiResult<Us
         .map_err(|_| ApiError::InvalidCredentials)?;
 
     Ok(User {
-        id: row.get("id"),
-        email: row.get("email"),
-        created_at: row.get("created_at"),
+        id: row.id,
+        email: row.email,
+        created_at: row.created_at,
     })
 }
 
@@ -231,13 +233,14 @@ pub async fn create_session(pool: &SqlitePool, user_id: &str) -> ApiResult<Strin
     let created = now();
     let expires = created + chrono::Duration::days(SESSION_DAYS);
 
-    sqlx::query(
+    let (created, expires) = (created.to_rfc3339(), expires.to_rfc3339());
+    sqlx::query!(
         "INSERT INTO sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+        token,
+        user_id,
+        created,
+        expires,
     )
-    .bind(&token)
-    .bind(user_id)
-    .bind(created.to_rfc3339())
-    .bind(expires.to_rfc3339())
     .execute(pool)
     .await?;
 
@@ -248,13 +251,13 @@ pub async fn create_session(pool: &SqlitePool, user_id: &str) -> ApiResult<Strin
 /// expired. An expired row is deleted as it is found, which is all the session
 /// cleanup this needs — a session nobody presents costs one row.
 pub async fn user_for_token(pool: &SqlitePool, token: &str) -> ApiResult<Option<User>> {
-    let row = sqlx::query(
+    let row = sqlx::query!(
         "SELECT u.id, u.email, u.created_at, s.expires_at
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token = ?",
+        token,
     )
-    .bind(token)
     .fetch_optional(pool)
     .await?;
 
@@ -262,8 +265,7 @@ pub async fn user_for_token(pool: &SqlitePool, token: &str) -> ApiResult<Option<
         return Ok(None);
     };
 
-    let expires_at: String = row.get("expires_at");
-    let expired = chrono::DateTime::parse_from_rfc3339(&expires_at)
+    let expired = chrono::DateTime::parse_from_rfc3339(&row.expires_at)
         .map(|t| t < now())
         // An unparseable timestamp is a row this server did not write the way
         // it thinks it did; treating it as expired fails closed.
@@ -275,9 +277,9 @@ pub async fn user_for_token(pool: &SqlitePool, token: &str) -> ApiResult<Option<
     }
 
     Ok(Some(User {
-        id: row.get("id"),
-        email: row.get("email"),
-        created_at: row.get("created_at"),
+        id: row.id,
+        email: row.email,
+        created_at: row.created_at,
     }))
 }
 
@@ -308,8 +310,7 @@ pub async fn change_password(
     keep_token: &str,
     change: &PasswordChange,
 ) -> ApiResult<()> {
-    let stored: String = sqlx::query_scalar("SELECT password_hash FROM users WHERE id = ?")
-        .bind(user_id)
+    let stored = sqlx::query_scalar!("SELECT password_hash FROM users WHERE id = ?", user_id)
         .fetch_optional(pool)
         .await?
         .ok_or(ApiError::NotFound)?;
@@ -335,25 +336,28 @@ pub async fn change_password(
     // sessions would be a window where the change had not taken effect.
     let mut tx = pool.begin().await?;
 
-    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
-        .bind(&hash)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "UPDATE users SET password_hash = ? WHERE id = ?",
+        hash,
+        user_id
+    )
+    .execute(&mut *tx)
+    .await?;
 
-    sqlx::query("DELETE FROM sessions WHERE user_id = ? AND token <> ?")
-        .bind(user_id)
-        .bind(keep_token)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query!(
+        "DELETE FROM sessions WHERE user_id = ? AND token <> ?",
+        user_id,
+        keep_token,
+    )
+    .execute(&mut *tx)
+    .await?;
 
     tx.commit().await?;
     Ok(())
 }
 
 pub async fn delete_session(pool: &SqlitePool, token: &str) -> ApiResult<()> {
-    sqlx::query("DELETE FROM sessions WHERE token = ?")
-        .bind(token)
+    sqlx::query!("DELETE FROM sessions WHERE token = ?", token)
         .execute(pool)
         .await?;
     Ok(())

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE applications\n             SET position = (SELECT COALESCE(MAX(position), -1) + 1\n                             FROM applications\n                             WHERE user_id = ? AND status = ? AND id <> ?)\n             WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "cb09ea01129eb54212e24f5f8b881da2f76e8bc6a7352e4f6958df17c1bd5304"
+}

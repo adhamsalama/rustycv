@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE applications SET user_id = ? WHERE user_id IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "63241cb3483a8ed0b13dea66a15499b966f5b93fb07435ca3e808c685ec00ea3"
+}

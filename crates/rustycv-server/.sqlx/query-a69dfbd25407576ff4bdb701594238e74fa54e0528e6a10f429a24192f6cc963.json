@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id FROM applications\n         WHERE user_id = ? AND status = ? AND id <> ?\n         ORDER BY position, created_at",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a69dfbd25407576ff4bdb701594238e74fa54e0528e6a10f429a24192f6cc963"
+}

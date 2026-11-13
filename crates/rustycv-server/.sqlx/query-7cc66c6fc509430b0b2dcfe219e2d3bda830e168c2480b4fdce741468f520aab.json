@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT public_pdf, public_pdf_cached_for, updated_at FROM cvs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "public_pdf",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "public_pdf_cached_for",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "7cc66c6fc509430b0b2dcfe219e2d3bda830e168c2480b4fdce741468f520aab"
+}

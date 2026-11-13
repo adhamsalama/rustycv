@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for,\n               comments_enabled AS \"comments_enabled: bool\"\n        FROM cvs WHERE public_id = ? AND published = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "data",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "public_pdf",
+        "ordinal": 4,
+        "type_info": "Blob"
+      },
+      {
+        "name": "public_pdf_cached_for",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "comments_enabled: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "2f7307c06155a827138c97fde4e8a3b0c840b76a1f00a864b93dbb77ab70e52c"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT public_pdf, public_pdf_cached_for FROM cvs WHERE id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "public_pdf",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "public_pdf_cached_for",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "e352a3b32401d79f00c88cd2eaee54601659953ee2f1e21f23cb49c0ac671331"
+}

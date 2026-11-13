@@ -10,7 +10,7 @@
 //! the `user_id` sits in the query, and somebody else's CV is a 404.
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -62,36 +62,29 @@ impl CommentInput {
     }
 }
 
-fn row_to_comment(row: sqlx::sqlite::SqliteRow) -> Comment {
-    Comment {
-        id: row.get("id"),
-        author: row.get("author"),
-        body: row.get("body"),
-        created_at: row.get("created_at"),
-    }
-}
-
 /// The CV behind a live link, and whether it takes comments.
 async fn published_cv(pool: &SqlitePool, public_id: &str) -> ApiResult<(String, bool)> {
-    let row =
-        sqlx::query("SELECT id, comments_enabled FROM cvs WHERE public_id = ? AND published = 1")
-            .bind(public_id)
-            .fetch_optional(pool)
-            .await?
-            .ok_or(ApiError::NotFound)?;
-    Ok((row.get("id"), row.get("comments_enabled")))
+    let row = sqlx::query!(
+        r#"SELECT id, comments_enabled AS "comments_enabled: bool"
+           FROM cvs WHERE public_id = ? AND published = 1"#,
+        public_id,
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+    Ok((row.id, row.comments_enabled))
 }
 
 /// Newest first: the owner comes to see what is new.
 async fn list_for(pool: &SqlitePool, cv_id: &str) -> ApiResult<Vec<Comment>> {
-    let rows = sqlx::query(
+    Ok(sqlx::query_as!(
+        Comment,
         "SELECT id, author, body, created_at FROM comments
          WHERE cv_id = ? ORDER BY created_at DESC, id DESC",
+        cv_id,
     )
-    .bind(cv_id)
     .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().map(row_to_comment).collect())
+    .await?)
 }
 
 /// Leave a comment on a published CV.
@@ -107,19 +100,20 @@ pub async fn create(pool: &SqlitePool, public_id: &str, input: CommentInput) -> 
     // One statement finds the CV, checks it is published and open to comments
     // and checks the ceiling, so none of them can change between the check and
     // the write.
-    let inserted = sqlx::query(
+    let max = MAX_COMMENTS as i64;
+    let inserted = sqlx::query!(
         "INSERT INTO comments (id, cv_id, author, body, created_at)
          SELECT ?, cvs.id, ?, ?, ?
          FROM cvs
          WHERE cvs.public_id = ? AND cvs.published = 1 AND cvs.comments_enabled = 1
            AND (SELECT COUNT(*) FROM comments WHERE cv_id = cvs.id) < ?",
+        comment.id,
+        comment.author,
+        comment.body,
+        comment.created_at,
+        public_id,
+        max,
     )
-    .bind(&comment.id)
-    .bind(&comment.author)
-    .bind(&comment.body)
-    .bind(&comment.created_at)
-    .bind(public_id)
-    .bind(MAX_COMMENTS as i64)
     .execute(pool)
     .await?
     .rows_affected();
@@ -142,12 +136,13 @@ pub async fn create(pool: &SqlitePool, public_id: &str, input: CommentInput) -> 
 
 /// The owner's view: every comment on one of their CVs, published or not.
 pub async fn list_owned(pool: &SqlitePool, user_id: &str, cv_id: &str) -> ApiResult<Vec<Comment>> {
-    let owned: Option<String> =
-        sqlx::query_scalar("SELECT id FROM cvs WHERE id = ? AND user_id = ?")
-            .bind(cv_id)
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?;
+    let owned = sqlx::query_scalar!(
+        "SELECT id FROM cvs WHERE id = ? AND user_id = ?",
+        cv_id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?;
     owned.ok_or(ApiError::NotFound)?;
     list_for(pool, cv_id).await
 }
@@ -159,13 +154,13 @@ pub async fn delete(
     cv_id: &str,
     comment_id: &str,
 ) -> ApiResult<()> {
-    let affected = sqlx::query(
+    let affected = sqlx::query!(
         "DELETE FROM comments
          WHERE id = ? AND cv_id = (SELECT id FROM cvs WHERE id = ? AND user_id = ?)",
+        comment_id,
+        cv_id,
+        user_id,
     )
-    .bind(comment_id)
-    .bind(cv_id)
-    .bind(user_id)
     .execute(pool)
     .await?
     .rows_affected();

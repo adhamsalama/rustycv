@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cvs\n         SET comments_read_at = COALESCE(\n             (SELECT MAX(created_at) FROM comments WHERE cv_id = cvs.id),\n             comments_read_at)\n         WHERE id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3274c81db0da82e6e60c3a9477987e4c5ddd107e4417471dcbf69b4cb0cf3f89"
+}

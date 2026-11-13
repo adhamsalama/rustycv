@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, title, data, created_at, updated_at, public_id,\n               published AS \"published: bool\",\n               comments_enabled AS \"comments_enabled: bool\",\n               (SELECT COUNT(*) FROM comments\n                WHERE comments.cv_id = cvs.id\n                  AND (cvs.comments_read_at IS NULL\n                       OR comments.created_at > cvs.comments_read_at)) AS \"unread_comments!: i64\"\n        FROM cvs WHERE id = ? AND user_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "data",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "public_id",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "published: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "comments_enabled: bool",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "unread_comments!: i64",
+        "ordinal": 8,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "dd8073ad99d54ce2ca38dde2f01042087138ada9fbe2bae2404ae43e00278d99"
+}

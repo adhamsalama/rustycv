@@ -104,9 +104,29 @@ test:
     pnpm -C web test
     pnpm -C web typecheck
 
-lint:
+lint: sqlx-check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo fmt --check
+
+prepare_db := "sqlite:" + justfile_directory() + "/target/sqlx-prepare.db"
+
+# Rebuild the checked queries' offline data after changing a query or a
+# migration. A scratch database migrated from nothing, so a local rustycv.db in
+# any state cannot leak into what the compiler checks against.
+sqlx-prepare: _sqlx-db
+    cd crates/rustycv-server && DATABASE_URL="{{prepare_db}}" cargo sqlx prepare -- --all-targets
+
+# Fail if .sqlx/ is behind the queries or the migrations. Builds read it
+# offline, so a migration that changed a column nothing re-checked would
+# otherwise compile against the schema as it was.
+sqlx-check: _sqlx-db
+    cd crates/rustycv-server && DATABASE_URL="{{prepare_db}}" cargo sqlx prepare --check -- --all-targets
+
+_sqlx-db:
+    @command -v sqlx >/dev/null || { echo "needs sqlx-cli: cargo install sqlx-cli --version 0.8.6 --no-default-features --features sqlite --locked" >&2; exit 1; }
+    rm -f target/sqlx-prepare.db target/sqlx-prepare.db-wal target/sqlx-prepare.db-shm
+    sqlx database create --database-url "{{prepare_db}}"
+    sqlx migrate run --source migrations --database-url "{{prepare_db}}"
 
 # Render every template from the fixture into target/render-out/.
 render:

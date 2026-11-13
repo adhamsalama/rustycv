@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cvs SET comments_enabled = ? WHERE id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1fcb50ac8d519d5c4c0e51541c4bd73c8376e7a799072a84d0e13157f3e303fe"
+}

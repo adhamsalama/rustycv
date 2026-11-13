@@ -6,7 +6,7 @@
 //! render path at all.
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -143,28 +143,41 @@ impl ApplicationInput {
     }
 }
 
-const SELECT: &str = r#"
-    SELECT a.id, a.company, a.role, a.url, a.notes, a.status, a.cv_id,
-           c.title AS cv_title, a.created_at, a.updated_at
-    FROM applications a
-    LEFT JOIN cvs c ON c.id = a.cv_id
-"#;
+/// A card as the table stores it, before `status` is parsed.
+///
+/// [`list`] and [`get`] spell out the same `SELECT` because the query macros
+/// take a literal and nothing else; the compiler checks both copies against
+/// the schema and against this struct.
+struct ApplicationRow {
+    id: String,
+    company: String,
+    role: String,
+    url: String,
+    notes: String,
+    status: String,
+    cv_id: Option<String>,
+    cv_title: Option<String>,
+    created_at: String,
+    updated_at: String,
+}
 
-fn row_to_application(row: sqlx::sqlite::SqliteRow) -> Application {
-    let status: String = row.get("status");
-    Application {
-        id: row.get("id"),
-        company: row.get("company"),
-        role: row.get("role"),
-        url: row.get("url"),
-        notes: row.get("notes"),
-        // The CHECK constraint makes an unknown value unreachable; landing in
-        // the first column beats failing the whole board if one ever appears.
-        status: Status::parse(&status).unwrap_or_default(),
-        cv_id: row.get("cv_id"),
-        cv_title: row.get("cv_title"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
+impl From<ApplicationRow> for Application {
+    fn from(row: ApplicationRow) -> Self {
+        Application {
+            id: row.id,
+            company: row.company,
+            role: row.role,
+            url: row.url,
+            notes: row.notes,
+            // The CHECK constraint makes an unknown value unreachable; landing
+            // in the first column beats failing the whole board if one ever
+            // appears.
+            status: Status::parse(&row.status).unwrap_or_default(),
+            cv_id: row.cv_id,
+            cv_title: row.cv_title,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
     }
 }
 
@@ -187,12 +200,14 @@ async fn linked_cv(
 
     // Checked here rather than left to the foreign key, so a stale id is a 400
     // naming the problem instead of a 500 from a constraint violation.
-    let exists = sqlx::query("SELECT 1 FROM cvs WHERE id = ? AND user_id = ?")
-        .bind(&id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?
-        .is_some();
+    let exists = sqlx::query_scalar!(
+        "SELECT id FROM cvs WHERE id = ? AND user_id = ?",
+        id,
+        user_id
+    )
+    .fetch_optional(pool)
+    .await?
+    .is_some();
 
     if !exists {
         return Err(ApiError::BadRequest(format!("no such CV: {id}")));
@@ -202,23 +217,40 @@ async fn linked_cv(
 
 /// The whole board, in board order. Columns are grouped by the client.
 pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<Application>> {
-    let rows = sqlx::query(&format!(
-        "{SELECT} WHERE a.user_id = ? ORDER BY a.position, a.created_at"
-    ))
-    .bind(user_id)
+    // `cv_title?` because the LEFT JOIN makes it nullable whatever the column.
+    let rows = sqlx::query_as!(
+        ApplicationRow,
+        r#"
+        SELECT a.id, a.company, a.role, a.url, a.notes, a.status, a.cv_id,
+               c.title AS "cv_title?", a.created_at, a.updated_at
+        FROM applications a
+        LEFT JOIN cvs c ON c.id = a.cv_id
+        WHERE a.user_id = ? ORDER BY a.position, a.created_at
+        "#,
+        user_id,
+    )
     .fetch_all(pool)
     .await?;
-    Ok(rows.into_iter().map(row_to_application).collect())
+    Ok(rows.into_iter().map(Application::from).collect())
 }
 
 pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Application> {
-    let row = sqlx::query(&format!("{SELECT} WHERE a.id = ? AND a.user_id = ?"))
-        .bind(id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(ApiError::NotFound)?;
-    Ok(row_to_application(row))
+    let row = sqlx::query_as!(
+        ApplicationRow,
+        r#"
+        SELECT a.id, a.company, a.role, a.url, a.notes, a.status, a.cv_id,
+               c.title AS "cv_title?", a.created_at, a.updated_at
+        FROM applications a
+        LEFT JOIN cvs c ON c.id = a.cv_id
+        WHERE a.id = ? AND a.user_id = ?
+        "#,
+        id,
+        user_id,
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+    Ok(row.into())
 }
 
 /// New cards land at the foot of their column, where the "Add" control is.
@@ -233,7 +265,10 @@ pub async fn create(
     let status = input.status()?;
     let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 
-    let inserted = sqlx::query(
+    let (company, role, url) = (input.company.trim(), input.role.trim(), input.url.trim());
+    let status = status.as_str();
+    let max = MAX_APPLICATIONS as i64;
+    let inserted = sqlx::query!(
         "INSERT INTO applications
              (id, user_id, company, role, url, notes, status, position, cv_id,
               created_at, updated_at)
@@ -242,21 +277,21 @@ pub async fn create(
                  FROM applications WHERE user_id = ? AND status = ?),
                 ?, ?, ?
          WHERE (SELECT COUNT(*) FROM applications WHERE user_id = ?) < ?",
+        id,
+        user_id,
+        company,
+        role,
+        url,
+        input.notes,
+        status,
+        user_id,
+        status,
+        cv_id,
+        ts,
+        ts,
+        user_id,
+        max,
     )
-    .bind(&id)
-    .bind(user_id)
-    .bind(input.company.trim())
-    .bind(input.role.trim())
-    .bind(input.url.trim())
-    .bind(&input.notes)
-    .bind(status.as_str())
-    .bind(user_id)
-    .bind(status.as_str())
-    .bind(&cv_id)
-    .bind(&ts)
-    .bind(&ts)
-    .bind(user_id)
-    .bind(MAX_APPLICATIONS as i64)
     .execute(pool)
     .await?
     .rows_affected();
@@ -284,37 +319,40 @@ pub async fn update(
     let status = input.status()?;
     let cv_id = linked_cv(pool, user_id, input.cv_id).await?;
 
-    sqlx::query(
+    let (company, role, url) = (input.company.trim(), input.role.trim(), input.url.trim());
+    let status_str = status.as_str();
+    let ts = now();
+    sqlx::query!(
         "UPDATE applications
          SET company = ?, role = ?, url = ?, notes = ?, status = ?, cv_id = ?, updated_at = ?
          WHERE id = ? AND user_id = ?",
+        company,
+        role,
+        url,
+        input.notes,
+        status_str,
+        cv_id,
+        ts,
+        id,
+        user_id,
     )
-    .bind(input.company.trim())
-    .bind(input.role.trim())
-    .bind(input.url.trim())
-    .bind(&input.notes)
-    .bind(status.as_str())
-    .bind(&cv_id)
-    .bind(now())
-    .bind(id)
-    .bind(user_id)
     .execute(pool)
     .await?;
 
     if current.status != status {
         // `id <> ?` so the row's own just-written position is not the maximum
         // it is being placed after.
-        sqlx::query(
+        sqlx::query!(
             "UPDATE applications
              SET position = (SELECT COALESCE(MAX(position), -1) + 1
                              FROM applications
                              WHERE user_id = ? AND status = ? AND id <> ?)
              WHERE id = ?",
+            user_id,
+            status_str,
+            id,
+            id,
         )
-        .bind(user_id)
-        .bind(status.as_str())
-        .bind(id)
-        .bind(id)
         .execute(pool)
         .await?;
     }
@@ -339,22 +377,26 @@ pub async fn move_to(
 
     let mut tx = pool.begin().await?;
 
-    sqlx::query("UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?")
-        .bind(status.as_str())
-        .bind(now())
-        .bind(id)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+    let status = status.as_str();
+    let ts = now();
+    sqlx::query!(
+        "UPDATE applications SET status = ?, updated_at = ? WHERE id = ? AND user_id = ?",
+        status,
+        ts,
+        id,
+        user_id,
+    )
+    .execute(&mut *tx)
+    .await?;
 
-    let mut ids: Vec<String> = sqlx::query_scalar(
+    let mut ids: Vec<String> = sqlx::query_scalar!(
         "SELECT id FROM applications
          WHERE user_id = ? AND status = ? AND id <> ?
          ORDER BY position, created_at",
+        user_id,
+        status,
+        id,
     )
-    .bind(user_id)
-    .bind(status.as_str())
-    .bind(id)
     .fetch_all(&mut *tx)
     .await?;
 
@@ -363,11 +405,14 @@ pub async fn move_to(
     ids.insert(index.min(ids.len()), id.to_string());
 
     for (position, row_id) in ids.iter().enumerate() {
-        sqlx::query("UPDATE applications SET position = ? WHERE id = ?")
-            .bind(position as i64)
-            .bind(row_id)
-            .execute(&mut *tx)
-            .await?;
+        let position = position as i64;
+        sqlx::query!(
+            "UPDATE applications SET position = ? WHERE id = ?",
+            position,
+            row_id,
+        )
+        .execute(&mut *tx)
+        .await?;
     }
 
     tx.commit().await?;
@@ -375,12 +420,14 @@ pub async fn move_to(
 }
 
 pub async fn delete(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<()> {
-    let affected = sqlx::query("DELETE FROM applications WHERE id = ? AND user_id = ?")
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
-        .await?
-        .rows_affected();
+    let affected = sqlx::query!(
+        "DELETE FROM applications WHERE id = ? AND user_id = ?",
+        id,
+        user_id,
+    )
+    .execute(pool)
+    .await?
+    .rows_affected();
 
     if affected == 0 {
         return Err(ApiError::NotFound);

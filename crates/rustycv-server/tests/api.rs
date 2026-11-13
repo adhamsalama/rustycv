@@ -5,7 +5,6 @@ use axum::http::{header, Request, StatusCode};
 use axum::Router;
 use rustycv_core::CvDocument;
 use serde_json::{json, Value};
-use sqlx::Row;
 use tower::ServiceExt;
 
 const FIXTURE: &str = include_str!("../../../fixtures/adham.json");
@@ -1030,15 +1029,15 @@ async fn the_first_account_adopts_cvs_that_predate_accounts() {
         .expect("database opens");
 
     // What the pre-accounts server would have written: no `user_id`.
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO cvs (id, title, schema_version, data, created_at, updated_at)
          VALUES ('legacy-cv', 'From before', 1, ?, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+        FIXTURE,
     )
-    .bind(FIXTURE)
     .execute(&pool)
     .await
     .expect("legacy row inserts");
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO applications
              (id, company, role, status, position, created_at, updated_at)
          VALUES ('legacy-app', 'Acme', 'Engineer', 'applied', 0,
@@ -1377,18 +1376,14 @@ async fn the_published_pdf_is_cached_and_invalidated_by_an_edit() {
         pool: &sqlx::SqlitePool,
         id: &str,
     ) -> (Option<Vec<u8>>, Option<String>, String) {
-        let row = sqlx::query(
+        let row = sqlx::query!(
             "SELECT public_pdf, public_pdf_cached_for, updated_at FROM cvs WHERE id = ?",
+            id,
         )
-        .bind(id)
         .fetch_one(pool)
         .await
         .unwrap();
-        (
-            row.get("public_pdf"),
-            row.get("public_pdf_cached_for"),
-            row.get("updated_at"),
-        )
+        (row.public_pdf, row.public_pdf_cached_for, row.updated_at)
     }
 
     let (pdf, cached_for, _) = cache_row(&pool, &id).await;
@@ -1460,12 +1455,14 @@ async fn unpublishing_clears_the_cached_pdf_rather_than_just_hiding_it() {
         .unwrap();
 
     async fn cache_columns(pool: &sqlx::SqlitePool, id: &str) -> (Option<Vec<u8>>, Option<String>) {
-        let row = sqlx::query("SELECT public_pdf, public_pdf_cached_for FROM cvs WHERE id = ?")
-            .bind(id)
-            .fetch_one(pool)
-            .await
-            .unwrap();
-        (row.get("public_pdf"), row.get("public_pdf_cached_for"))
+        let row = sqlx::query!(
+            "SELECT public_pdf, public_pdf_cached_for FROM cvs WHERE id = ?",
+            id,
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (row.public_pdf, row.public_pdf_cached_for)
     }
 
     let (status, _) = app.get(&format!("/api/public/cvs/{public_id}/pdf")).await;

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO applications\n             (id, user_id, company, role, url, notes, status, position, cv_id,\n              created_at, updated_at)\n         SELECT ?, ?, ?, ?, ?, ?, ?,\n                (SELECT COALESCE(MAX(position), -1) + 1\n                 FROM applications WHERE user_id = ? AND status = ?),\n                ?, ?, ?\n         WHERE (SELECT COUNT(*) FROM applications WHERE user_id = ?) < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "b71f304b1b14c3a82f4d94085cf9ad081352a20d295e3f112a2f9235df9147c4"
+}

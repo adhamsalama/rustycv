@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id,\n               title,\n               COALESCE(json_extract(data, '$.template'), 'classic') AS \"template!: String\",\n               COALESCE(json_extract(data, '$.basics.fullName'), '') AS \"full_name!: String\",\n               created_at,\n               updated_at,\n               published AS \"published: bool\"\n        FROM cvs\n        WHERE user_id = ?\n        ORDER BY updated_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "template!: String",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "full_name!: String",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "published: bool",
+        "ordinal": 6,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      null,
+      null,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c0e6666f9c647a9eb63d9ad4e3b68509b61ea815f409b7134b25783fc9854ef7"
+}

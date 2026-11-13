@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cvs\n         SET data = ?, schema_version = ?, title = COALESCE(?, title), updated_at = ?\n         WHERE id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "f832a0c7d7f488190013ec341a6e68e4b697313d413c29cec96cb8d19ec890cc"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO comments (id, cv_id, author, body, created_at)\n         SELECT ?, cvs.id, ?, ?, ?\n         FROM cvs\n         WHERE cvs.public_id = ? AND cvs.published = 1 AND cvs.comments_enabled = 1\n           AND (SELECT COUNT(*) FROM comments WHERE cv_id = cvs.id) < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "3b70e4d16aad860fdefbbb9769a3b446276ab0d361dede60af3e6124b3f4866f"
+}

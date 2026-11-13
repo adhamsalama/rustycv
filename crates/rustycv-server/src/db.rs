@@ -8,7 +8,7 @@
 use rustycv_core::CvDocument;
 use serde::Serialize;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
-use sqlx::{Row, SqlitePool};
+use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::error::{ApiError, ApiResult};
@@ -76,36 +76,27 @@ fn now() -> String {
 pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>> {
     // `json_extract` keeps the listing cheap: the dashboard never has to
     // deserialize a full document just to draw a card.
-    let rows = sqlx::query(
+    //
+    // SQLite cannot type an expression, so the two `json_extract` columns name
+    // theirs: `!` because the `COALESCE` makes them non-null.
+    Ok(sqlx::query_as!(
+        CvSummary,
         r#"
         SELECT id,
                title,
-               COALESCE(json_extract(data, '$.template'), 'classic')   AS template,
-               COALESCE(json_extract(data, '$.basics.fullName'), '')   AS full_name,
+               COALESCE(json_extract(data, '$.template'), 'classic') AS "template!: String",
+               COALESCE(json_extract(data, '$.basics.fullName'), '') AS "full_name!: String",
                created_at,
                updated_at,
-               published
+               published AS "published: bool"
         FROM cvs
         WHERE user_id = ?
         ORDER BY updated_at DESC
         "#,
+        user_id,
     )
-    .bind(user_id)
     .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|r| CvSummary {
-            id: r.get("id"),
-            title: r.get("title"),
-            template: r.get("template"),
-            full_name: r.get("full_name"),
-            created_at: r.get("created_at"),
-            updated_at: r.get("updated_at"),
-            published: r.get("published"),
-        })
-        .collect())
+    .await?)
 }
 
 /// One CV, if it belongs to this account.
@@ -113,32 +104,34 @@ pub async fn list(pool: &SqlitePool, user_id: &str) -> ApiResult<Vec<CvSummary>>
 /// Somebody else's id is `NotFound` rather than a 403: whether an id exists at
 /// all is not this account's business.
 pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
-    let row = sqlx::query(
-        "SELECT id, title, data, created_at, updated_at, public_id, published,
-                comments_enabled,
-                (SELECT COUNT(*) FROM comments
-                 WHERE comments.cv_id = cvs.id
-                   AND (cvs.comments_read_at IS NULL
-                        OR comments.created_at > cvs.comments_read_at)) AS unread_comments
-         FROM cvs WHERE id = ? AND user_id = ?",
+    let row = sqlx::query!(
+        r#"
+        SELECT id, title, data, created_at, updated_at, public_id,
+               published AS "published: bool",
+               comments_enabled AS "comments_enabled: bool",
+               (SELECT COUNT(*) FROM comments
+                WHERE comments.cv_id = cvs.id
+                  AND (cvs.comments_read_at IS NULL
+                       OR comments.created_at > cvs.comments_read_at)) AS "unread_comments!: i64"
+        FROM cvs WHERE id = ? AND user_id = ?
+        "#,
+        id,
+        user_id,
     )
-    .bind(id)
-    .bind(user_id)
     .fetch_optional(pool)
     .await?
     .ok_or(ApiError::NotFound)?;
 
-    let data: String = row.get("data");
     Ok(Cv {
-        id: row.get("id"),
-        title: row.get("title"),
-        created_at: row.get("created_at"),
-        updated_at: row.get("updated_at"),
-        document: serde_json::from_str(&data)?,
-        public_id: row.get("public_id"),
-        published: row.get("published"),
-        comments_enabled: row.get("comments_enabled"),
-        unread_comments: row.get("unread_comments"),
+        id: row.id,
+        title: row.title,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        document: serde_json::from_str(&row.data)?,
+        public_id: row.public_id,
+        published: row.published,
+        comments_enabled: row.comments_enabled,
+        unread_comments: row.unread_comments,
     })
 }
 
@@ -148,15 +141,15 @@ pub async fn get(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
 /// the comparison is between two values this table wrote and a comment
 /// arriving mid-request is still unread afterwards.
 pub async fn mark_comments_read(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv> {
-    let affected = sqlx::query(
+    let affected = sqlx::query!(
         "UPDATE cvs
          SET comments_read_at = COALESCE(
              (SELECT MAX(created_at) FROM comments WHERE cv_id = cvs.id),
              comments_read_at)
          WHERE id = ? AND user_id = ?",
+        id,
+        user_id,
     )
-    .bind(id)
-    .bind(user_id)
     .execute(pool)
     .await?
     .rows_affected();
@@ -174,13 +167,15 @@ pub async fn set_comments_enabled(
     id: &str,
     enabled: bool,
 ) -> ApiResult<Cv> {
-    let affected = sqlx::query("UPDATE cvs SET comments_enabled = ? WHERE id = ? AND user_id = ?")
-        .bind(enabled)
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
-        .await?
-        .rows_affected();
+    let affected = sqlx::query!(
+        "UPDATE cvs SET comments_enabled = ? WHERE id = ? AND user_id = ?",
+        enabled,
+        id,
+        user_id,
+    )
+    .execute(pool)
+    .await?
+    .rows_affected();
     if affected == 0 {
         return Err(ApiError::NotFound);
     }
@@ -200,20 +195,22 @@ pub async fn create(
     // `INSERT ... SELECT ... WHERE` so the count and the write are one
     // statement: the row appears only if there was room for it at the moment
     // it was written, and no row written means the account is full.
-    let inserted = sqlx::query(
+    let schema_version = document.schema_version as i64;
+    let max = MAX_CVS as i64;
+    let inserted = sqlx::query!(
         "INSERT INTO cvs (id, user_id, title, schema_version, data, created_at, updated_at)
          SELECT ?, ?, ?, ?, ?, ?, ?
          WHERE (SELECT COUNT(*) FROM cvs WHERE user_id = ?) < ?",
+        id,
+        user_id,
+        title,
+        schema_version,
+        data,
+        ts,
+        ts,
+        user_id,
+        max,
     )
-    .bind(&id)
-    .bind(user_id)
-    .bind(title)
-    .bind(document.schema_version as i64)
-    .bind(&data)
-    .bind(&ts)
-    .bind(&ts)
-    .bind(user_id)
-    .bind(MAX_CVS as i64)
     .execute(pool)
     .await?
     .rows_affected();
@@ -235,17 +232,19 @@ pub async fn update(
     document: &CvDocument,
 ) -> ApiResult<Cv> {
     let data = serde_json::to_string(document)?;
-    let affected = sqlx::query(
+    let schema_version = document.schema_version as i64;
+    let ts = now();
+    let affected = sqlx::query!(
         "UPDATE cvs
          SET data = ?, schema_version = ?, title = COALESCE(?, title), updated_at = ?
          WHERE id = ? AND user_id = ?",
+        data,
+        schema_version,
+        title,
+        ts,
+        id,
+        user_id,
     )
-    .bind(&data)
-    .bind(document.schema_version as i64)
-    .bind(title)
-    .bind(now())
-    .bind(id)
-    .bind(user_id)
     .execute(pool)
     .await?
     .rows_affected();
@@ -257,9 +256,7 @@ pub async fn update(
 }
 
 pub async fn delete(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<()> {
-    let affected = sqlx::query("DELETE FROM cvs WHERE id = ? AND user_id = ?")
-        .bind(id)
-        .bind(user_id)
+    let affected = sqlx::query!("DELETE FROM cvs WHERE id = ? AND user_id = ?", id, user_id)
         .execute(pool)
         .await?
         .rows_affected();
@@ -283,12 +280,14 @@ pub async fn publish(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<Cv
         .clone()
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    sqlx::query("UPDATE cvs SET public_id = ?, published = 1 WHERE id = ? AND user_id = ?")
-        .bind(&public_id)
-        .bind(id)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+    sqlx::query!(
+        "UPDATE cvs SET public_id = ?, published = 1 WHERE id = ? AND user_id = ?",
+        public_id,
+        id,
+        user_id,
+    )
+    .execute(pool)
+    .await?;
 
     get(pool, user_id, id).await
 }
@@ -299,13 +298,13 @@ pub async fn unpublish(pool: &SqlitePool, user_id: &str, id: &str) -> ApiResult<
     // a rendered PDF sitting in the row after the link is switched off is the
     // one thing this cache was never supposed to be — the CV's data, rather
     // than a disposable memo of it.
-    let affected = sqlx::query(
+    let affected = sqlx::query!(
         "UPDATE cvs
          SET published = 0, public_pdf = NULL, public_pdf_cached_for = NULL
          WHERE id = ? AND user_id = ?",
+        id,
+        user_id,
     )
-    .bind(id)
-    .bind(user_id)
     .execute(pool)
     .await?
     .rows_affected();
@@ -336,25 +335,26 @@ pub struct PublishedCv {
 /// is currently published — a toggled-off link reads exactly like one that
 /// never existed, which is the point of the switch.
 pub async fn get_published(pool: &SqlitePool, public_id: &str) -> ApiResult<PublishedCv> {
-    let row = sqlx::query(
-        "SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for,
-                comments_enabled
-         FROM cvs WHERE public_id = ? AND published = 1",
+    let row = sqlx::query!(
+        r#"
+        SELECT id, title, data, updated_at, public_pdf, public_pdf_cached_for,
+               comments_enabled AS "comments_enabled: bool"
+        FROM cvs WHERE public_id = ? AND published = 1
+        "#,
+        public_id,
     )
-    .bind(public_id)
     .fetch_optional(pool)
     .await?
     .ok_or(ApiError::NotFound)?;
 
-    let data: String = row.get("data");
     Ok(PublishedCv {
-        id: row.get("id"),
-        title: row.get("title"),
-        document: serde_json::from_str(&data)?,
-        updated_at: row.get("updated_at"),
-        cached_pdf: row.get("public_pdf"),
-        cached_for: row.get("public_pdf_cached_for"),
-        comments_enabled: row.get("comments_enabled"),
+        id: row.id,
+        title: row.title,
+        document: serde_json::from_str(&row.data)?,
+        updated_at: row.updated_at,
+        cached_pdf: row.public_pdf,
+        cached_for: row.public_pdf_cached_for,
+        comments_enabled: row.comments_enabled,
     })
 }
 
@@ -369,13 +369,14 @@ pub async fn cache_published_pdf(pool: &SqlitePool, id: &str, rendered_for: &str
     // Best-effort: a failure to cache means the next visit renders again,
     // which is correct behaviour, not a degraded one — so it is logged rather
     // than surfaced as a request failure.
-    if let Err(error) =
-        sqlx::query("UPDATE cvs SET public_pdf = ?, public_pdf_cached_for = ? WHERE id = ?")
-            .bind(pdf)
-            .bind(rendered_for)
-            .bind(id)
-            .execute(pool)
-            .await
+    if let Err(error) = sqlx::query!(
+        "UPDATE cvs SET public_pdf = ?, public_pdf_cached_for = ? WHERE id = ?",
+        pdf,
+        rendered_for,
+        id,
+    )
+    .execute(pool)
+    .await
     {
         tracing::warn!(%error, cv_id = %id, "failed to cache published pdf");
     }

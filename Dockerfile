@@ -95,6 +95,9 @@ COPY assets assets
 COPY migrations migrations
 # The seed binary embeds the reference resume; cheap to carry, confusing to omit.
 COPY fixtures fixtures
+# The query macros check against the committed `.sqlx/` data (it comes in
+# with `crates`); `.cargo/config.toml` is not copied, so say so here.
+ENV SQLX_OFFLINE=true
 RUN cargo build --release -p rustycv-server --bin rustycv-server
 
 # What ships: one binary, the built editor, and nothing else. No fonts, no

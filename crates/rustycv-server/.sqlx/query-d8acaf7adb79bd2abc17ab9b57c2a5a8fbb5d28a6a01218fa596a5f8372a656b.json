@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO applications\n             (id, company, role, status, position, created_at, updated_at)\n         VALUES ('legacy-app', 'Acme', 'Engineer', 'applied', 0,\n                 '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "d8acaf7adb79bd2abc17ab9b57c2a5a8fbb5d28a6a01218fa596a5f8372a656b"
+}

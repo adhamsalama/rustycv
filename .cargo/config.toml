@@ -1,0 +1,8 @@
+[env]
+# The query macros in rustycv-server check every statement against the schema
+# at compile time. Offline, they check against `crates/rustycv-server/.sqlx/`
+# rather than whatever database `DATABASE_URL` happens to point at — the
+# justfile sets that for running the server, and a local `rustycv.db` that is
+# behind on migrations would otherwise fail the build. `just sqlx-prepare`
+# regenerates the data; `cargo sqlx prepare` overrides this while it does.
+SQLX_OFFLINE = "true"

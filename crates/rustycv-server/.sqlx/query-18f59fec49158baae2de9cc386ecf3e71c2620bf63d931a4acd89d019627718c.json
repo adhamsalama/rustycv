@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM comments\n         WHERE id = ? AND cv_id = (SELECT id FROM cvs WHERE id = ? AND user_id = ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "18f59fec49158baae2de9cc386ecf3e71c2620bf63d931a4acd89d019627718c"
+}

@@ -486,6 +486,17 @@ stranger's business. `one_account_cannot_reach_anothers_cv` and
 `..._board` pin both halves, and they were watched failing against the
 unscoped queries.
 
+**Every statement is a checked macro** — `query!`, `query_as!`,
+`query_scalar!`, never the `sqlx::query(...)` function and `row.get("col")`.
+A misspelt column or a wrong type is then a compile error rather than a panic
+on the request that happens to reach it. Builds run offline
+(`SQLX_OFFLINE` in `.cargo/config.toml` and the Dockerfile) against
+`crates/rustycv-server/.sqlx/`, so after touching a query or a migration run
+`just sqlx-prepare` and commit the result; `just lint` runs `sqlx-check`,
+which fails when that data is behind. SQLite cannot type an expression, so
+`COALESCE`, `COUNT` and `json_extract` columns name theirs
+(`AS "template!: String"`), and `INTEGER` flags read as `bool` the same way.
+
 `user_id` is nullable because rows written before accounts existed have no
 owner to name. **The first account created on such a database adopts them** —
 without that, an instance that had been in use comes back looking empty, which

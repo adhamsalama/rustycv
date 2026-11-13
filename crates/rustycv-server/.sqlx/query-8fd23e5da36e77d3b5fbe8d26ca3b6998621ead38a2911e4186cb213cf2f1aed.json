@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO cvs (id, user_id, title, schema_version, data, created_at, updated_at)\n         SELECT ?, ?, ?, ?, ?, ?, ?\n         WHERE (SELECT COUNT(*) FROM cvs WHERE user_id = ?) < ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "8fd23e5da36e77d3b5fbe8d26ca3b6998621ead38a2911e4186cb213cf2f1aed"
+}

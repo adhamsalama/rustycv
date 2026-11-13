@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cvs SET public_id = ?, published = 1 WHERE id = ? AND user_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "d8ca19e11b8cc894519de89879be15c1deaf4520c881dcb2f3530b57a2f22b72"
+}
